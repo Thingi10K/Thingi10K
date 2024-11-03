@@ -1,0 +1,21 @@
+[build-system]
+requires = ["flit_core >=3.2,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "thingi10k"
+authors = [{name = "Qingnan Zhou", email = "qz263@nyu.edu"}, {name = "Alec Jacobson", email = "jacobson@cs.toronto.edu"}]
+license = {file = "LICENSE"}
+readme = "README.md"
+classifiers = ["License :: OSI Approved :: Apache Software License"]
+dynamic = ["description", "version"]
+dependencies=[
+    "numpy>=1.22",
+    "pandas>=2.0",
+    ]
+requires-python = ">=3.10"
+
+
+[mypy]
+plugins = "numpy.typing.mypy_plugin"
+follow_imports = "skip"
