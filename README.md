@@ -28,6 +28,12 @@ In a nutshell, Thingi10K contains...
 Thingi10K is created by [Qingnan Zhou](https://research.adobe.com/person/qingnan-zhou/) and [Alec
 Jacobson](http://www.cs.toronto.edu/~jacobson/).
 
+## Installation
+
+```sh
+pip install thingi10k
+```
+
 ## Usage
 
 ```py
