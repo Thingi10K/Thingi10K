@@ -2,9 +2,61 @@ from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
+import datasets  # type: ignore
+
+from ._logger import logger
 
 root = Path(__file__).parent
 metadata_dir = root / "metadata"
+_dataset = None
+
+
+def dataset(
+    file_ids: int | npt.ArrayLike | None = None,
+    num_vertices: int | None | tuple[int | None, int | None] = None,
+    num_facets: int | None | tuple[int | None, int | None] = None,
+):
+    """Get the (filtered) dataset.
+
+    :param file_ids:     Filter by file ids.
+    :param num_vertices: Filter by the number of vertices. If a tuple is provided, it is interpreted
+                         as a range. If any of the lower or upper bound is None, it is not
+                         considered in the filter.
+    :param num_facets:   Filter by the number of facets. If a tuple is provided, it is interpreted
+                         as a range. If any of the lower or upper bound is None, it is not
+                         considered in the filter.
+
+    :returns: The filtered dataset.
+    """
+    assert _dataset is not None, "Dataset is not initialized. Call init() first."
+    d = _dataset["train"]
+
+    if file_ids is not None:
+        if isinstance(file_ids, int):
+            file_ids = [file_ids]
+        d = d.filter(lambda x: x["file_id"] in file_ids)
+
+    if num_vertices is not None:
+        if isinstance(num_vertices, int):
+            num_vertices = (num_vertices, num_vertices)
+        assert isinstance(num_vertices, tuple)
+        assert len(num_vertices) == 2
+        if num_vertices[0] is not None:
+            d = d.filter(lambda x: x["num_vertices"] >= num_vertices[0])
+        if num_vertices[1] is not None:
+            d = d.filter(lambda x: x["num_vertices"] <= num_vertices[1])
+
+    if num_facets is not None:
+        if isinstance(num_facets, int):
+            num_facets = (num_facets, num_facets)
+        assert isinstance(num_facets, tuple)
+        assert len(num_facets) == 2
+        if num_facets[0] is not None:
+            d = d.filter(lambda x: x["num_facets"] >= num_facets[0])
+        if num_facets[1] is not None:
+            d = d.filter(lambda x: x["num_facets"] <= num_facets[1])
+
+    return d
 
 
 def input_summary():
@@ -30,6 +82,16 @@ def tag_data():
 def file_ids() -> npt.ArrayLike:
     summary = input_summary()
     return summary["ID"].values
+
+
+def __iter__():
+    assert _dataset is not None, "Dataset is not initialized. Call init() first."
+    for entry in _dataset["train"]:
+        file_id = entry["file_id"]
+        file_path = entry["file_path"]
+        with np.load(file_path) as data:
+            vertices, facets = data["vertices"], data["facets"]
+            yield file_id, vertices, facets
 
 
 class Metadata:
@@ -132,8 +194,26 @@ def load_file(file_id: int) -> tuple[npt.ArrayLike, npt.ArrayLike]:
 
     :param file_id: file id of the mesh.
 
-    :return: vertices and faces of the mesh object."""
+    :return: vertices and facets of the mesh object."""
 
-    mesh_data = root / f"npz/{file_id}.npz"
-    data = np.load(mesh_data)
-    return data["vertices"], data["faces"]
+    assert _dataset is not None, "Dataset is not initialized. Call init() first."
+
+    if file_id in [49911, 74463, 286163, 77942]:
+        logger.warning(
+            f"Model {file_id} is known to be corrupted. Returning empty arrays."
+        )
+        return np.array([], dtype=np.float64), np.array([], dtype=np.int32)
+
+    subdataset = _dataset.filter(lambda x: x["file_id"] == file_id)
+    assert len(subdataset["train"]) == 1, f"File {file_id} not found in the dataset."
+
+    mesh_file = subdataset["train"][0]["file_path"]
+    with np.load(mesh_file) as data:
+        return data["vertices"], data["facets"]
+
+
+def init():
+    global _dataset
+    _dataset = datasets.load_dataset(
+        str((root / "Thingi10K.py").resolve()), trust_remote_code=True
+    )
