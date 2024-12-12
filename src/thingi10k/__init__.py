@@ -8,17 +8,18 @@
 
     thingi10k.init()
 
-    for file_id in thingi10k.file_ids():
-        vertices, faces = thingi10k.load_file(file_id)
-        # Do something with vertices and faces
+    # Iterate over all data
+    for entry in thingi10k.dataset():
+        file_id = entry['file_id']
+        vertices, facets = thingi10k.load_file(entry['file_path'])
 
-    for file_id in thingi10k.filter(thing_ids=[10955]).file_ids()
-        vertices, faces = thingi10k.load_file(file_id)
-        # Do something with vertices and faces
+    # Iterate over closed mesh with at most 1000 vertices
+    for entry in thingi10k.dataset(num_vertices=(None, 1000), closed=True):
+        file_id = entry['file_id']
+        vertices, facets = thingi10k.load_file(entry['file_path'])
     ```
-
 """
 
 from .Thingi10K import __version__
 
-from ._utils import load_file, file_ids, filter, init, dataset
+from ._utils import load_file, init, dataset
