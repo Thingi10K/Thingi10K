@@ -39,24 +39,19 @@ pip install thingi10k
 ```py
 import thingi10k
 
-# Get file_ids of all things
-file_ids = thingi10k.file_ids()
+thingi10k.init() # Initial download of the dataset
 
-# Get geometry (i.e. vertices, faces) of a given `file_id`
-for file_id in file_ids:
-    V, F = thingi10k.load_file(file_id)
-```
 
-To filter the dataset based on geometric or contextual properties, use the `filter` function.
+# Iterate over the entire dataset
+for entry in thingi10k.dataset():
+    file_id = entry['file_id']
+    vertices, facets = thingi10k.load_file(entry['file_path'])
 
-```py
-import thingi10k
 
-# Filter the dataset based on piecewise-constant winding number (PWN)
-pwn_file_ids = thingi10k.filter(is_pwn=True)
-
-# Filter the dataset based on solidness
-solid_file_ids = thingi10k.filter(is_solid=True)
+# Iterate over closed mesh with at most 1000 vertices
+for entry in thingi10k.dataset(num_vertices=(None, 1000), closed=True):
+    file_id = entry['file_id']
+    vertices, facets = thingi10k.load_file(entry['file_path'])
 ```
 
 ## License
