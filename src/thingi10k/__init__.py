@@ -19,4 +19,4 @@
 
 __version__ = "0.1.0"
 
-from .thingi10k import load_file, file_ids, filter
+from .utils import load_file, file_ids, filter
