@@ -27,7 +27,7 @@ between Sept. 16, 2009 and Nov. 15, 2015. On this site, we hope to share our fin
 
 _HOMEPAGE = "https://ten-thousand-models.appspot.com"
 
-_LICENSE = ""
+_LICENSE = "" # See license field associated with each model.
 
 
 class Thingi10K(datasets.GeneratorBasedBuilder):
@@ -38,7 +38,14 @@ class Thingi10K(datasets.GeneratorBasedBuilder):
         features = datasets.Features(
             {
                 "file_id": datasets.Value("int32"),
+                "thing_id": datasets.Value("int32"),
                 "file_path": datasets.Value("string"),
+                "author": datasets.Value("string"),
+                "date": datasets.Value("date64"),
+                "license": datasets.Value("string"),
+                "category": datasets.Value("string"),
+                "sub_category": datasets.Value("string"),
+                "name": datasets.Value("string"),
                 "num_vertices": datasets.Value("int32"),
                 "num_facets": datasets.Value("int32"),
                 "num_components": datasets.Value("int32"),
@@ -73,7 +80,13 @@ class Thingi10K(datasets.GeneratorBasedBuilder):
         geometry_csv = dl_manager.download(f"{metadata_url}/geometry_data.csv")
         assert pathlib.Path(geometry_csv).exists()
 
-        schema = {
+        contextual_csv = dl_manager.download(f"{metadata_url}/contextual_data.csv")
+        assert pathlib.Path(contextual_csv).exists()
+
+        summary_csv = dl_manager.download(f"{metadata_url}/input_summary.csv")
+        assert pathlib.Path(summary_csv).exists()
+
+        geometry_schema = {
             "file_id": pl.Int32,
             "num_vertices": pl.Int32,
             "num_faces": pl.Int32,
@@ -124,10 +137,31 @@ class Thingi10K(datasets.GeneratorBasedBuilder):
             "ave_dihedral_angle": pl.Float64,
             "ave_aspect_ratio": pl.Float64,
         }
-
         geometry_data = pl.read_csv(
-            geometry_csv, schema_overrides=schema, ignore_errors=True
+            geometry_csv, schema_overrides=geometry_schema, ignore_errors=True
         )
+
+        contextual_schema = {
+            "Thing ID": pl.Int32,
+            "Date": pl.Datetime,
+            "Category": pl.Categorical,
+            "Sub-category": pl.Categorical,
+            "Name": pl.String,
+            "Author": pl.String,
+            "License": pl.Categorical,
+        }
+        contextual_data = pl.read_csv(
+            contextual_csv, schema_overrides=contextual_schema, ignore_errors=True
+        )
+
+        summary_schema = {
+            "ID": pl.Int32,
+            "Thing ID": pl.Int32,
+        }
+        summary_data = pl.read_csv(
+            summary_csv, schema_overrides=summary_schema, ignore_errors=True
+        )
+
         file_ids = geometry_data["file_id"]
 
         downloaded_files = dl_manager.download(
@@ -144,28 +178,40 @@ class Thingi10K(datasets.GeneratorBasedBuilder):
                 gen_kwargs={
                     "npz_files": downloaded_files,
                     "geometry_data": geometry_data,
+                    "contextual_data": contextual_data,
+                    "summary_data": summary_data,
                 },
             ),
         ]
 
-    def _generate_examples(self, npz_files, geometry_data):
+    def _generate_examples(self, npz_files, geometry_data, contextual_data, summary_data):
         """
         Yield examples from the .npz files in the specified folder.
         """
 
-        df = geometry_data
+        thing_file_ids = summary_data.select(["ID", "Thing ID"])
+        df = geometry_data.join(thing_file_ids, left_on="file_id", right_on="ID", how="left")
+        df = df.join(contextual_data, on="Thing ID", how="left")
 
         for idx, file_name in enumerate(npz_files):
             file_id = pathlib.Path(file_name).stem
 
-            #metadata = df.row(idx, named=True)
-            metadata = df.filter(df["file_id"] == int(file_id)).row(0, named=True)
+            metadata = df.filter(df["file_id"] == int(file_id))
+            assert metadata.shape[0] == 1
+            metadata = metadata.row(0, named=True)
             assert metadata["file_id"] == int(file_id)
 
             # Yield the data, including the filename
             yield idx, {
                 "file_id": int(file_id),
+                "thing_id": metadata["Thing ID"],
                 "file_path": file_name,
+                "author": metadata["Author"],
+                "date": metadata["Date"],
+                "license": metadata["License"],
+                "category": metadata["Category"],
+                "sub_category": metadata["Sub-category"],
+                "name": metadata["Name"],
                 "num_vertices": metadata["num_vertices"],
                 "num_facets": metadata["num_faces"],
                 "num_components": metadata["num_connected_components"],
