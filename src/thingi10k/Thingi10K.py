@@ -1,12 +1,12 @@
 """Thingi10K: A Dataset of 10,000 3D-Printing Models"""
 
-import datasets
+import datasets # type: ignore
 import datetime
 import numpy as np
 import pathlib
 import polars as pl
 
-__version__ = "1.1.0"
+__version__ = "1.1.1"
 
 _corrupt_file_ids = [49911, 74463, 286163, 77942]
 
