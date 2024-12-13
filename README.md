@@ -30,6 +30,14 @@ In a nutshell, Thingi10K contains...
 Thingi10K is created by [Qingnan Zhou](https://research.adobe.com/person/qingnan-zhou/) and [Alec
 Jacobson](http://www.cs.toronto.edu/~jacobson/).
 
+## Raw dataset
+
+You can download the raw dataset from [Google drive](https://drive.google.com/file/d/0B4_KyPW4T9oGaktsb0ZLLWdxZXM/view?usp=drive_link&resourcekey=0-JwliN4T7sHkaNVUo2g4_ZQ).
+
+One can also obtain the dataset via the `thingi10k` Python package. It contains both geometric and
+contextual data extracted from the raw dataset, and provides a convenient API to access and filter
+the dataset.
+
 ## Installation
 
 ```sh
@@ -96,11 +104,11 @@ cc_models = thingi10k.dataset(license='creative commons')
 
 ## License
 
-The source code for organize and filter the Thingi10K dataset is licensed under the Apache License,
+The source code for organizing and filtering the Thingi10K dataset is licensed under the Apache License,
 Version 2.0. Each "thing" in the dataset is licensed under different licenses. Please refer to the
 `license` field associated with each entry in the dataset.
 
-## Erreta
+## Errata
 
 The following models are known to be "corrupt." However, we decide to still include them in our dataset in order to faithfully reflect mesh qualities on Thingiverse.
 
@@ -108,13 +116,15 @@ The following models are known to be "corrupt." However, we decide to still incl
 * Model 74463 is empty.
 * Model 286163 is empty.
 * Model 81313 contains NURBS curves and surfaces instead of polygonal faces, which may not be supported by many OBJ parsers.
-* Model 77942 is corrupt (binary STL). Here is a potential replacement model created by a different user.
+* Model 77942 is corrupt (binary STL).
 
 ## Acknowledgements
 
-We thank Marcel Campen, Chelsea Tymms, and Julian Panetta for early feedback and proofreading. This project is funded in part by NSF grants CMMI-11-29917, IIS-14-09286, and IIS-17257.
+This project is funded in part by NSF grants CMMI-11-29917, IIS-14-09286, and IIS-17257.
 
+We thank Marcel Campen, Chelsea Tymms, and Julian Panetta for early feedback and proofreading.
 We also thank Neil Dickson for pointing out corrupt models, and Nick Sharp for pointing out bugs in download script.
+Lastly, we thank Silvia Sellán and Yun-Chun Chen for discussion and suggestion on hosting the dataset.
 
 ## Cite us
 
