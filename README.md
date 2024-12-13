@@ -43,7 +43,6 @@ import thingi10k
 
 thingi10k.init() # Initial download of the dataset
 
-
 # Iterate over the entire dataset
 for entry in thingi10k.dataset():
     file_id = entry['file_id']
@@ -64,7 +63,7 @@ download cost.
 The cache directory can be explicitly specified by user:
 
 ```py
-thigni10k.init(cache_dir="path/to/.thingi10k")
+thingi10k.init(cache_dir="path/to/.thingi10k")
 ```
 
 To force a re-download of the dataset:
