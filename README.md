@@ -1,5 +1,7 @@
 ## Thingi10K Dataset
 
+![Thingi10K Poster](https://user-images.githubusercontent.com/3606672/65047743-fa269180-d930-11e9-8013-134764b150c1.png)
+
 Thingi10K is a large scale 3D dataset created to study the variety, complexity and quality of
 real-world 3D printing models. We analyze every mesh of all things featured on
 [Thingiverse.com](https://www.thingiverse.com/)
@@ -99,4 +101,29 @@ The source code for organize and filter the Thingi10K dataset is licensed under 
 Version 2.0. Each "thing" in the dataset is licensed under different licenses. Please refer to the
 `license` field associated with each entry in the dataset.
 
+## Erreta
 
+The following models are known to be "corrupt." However, we decide to still include them in our dataset in order to faithfully reflect mesh qualities on Thingiverse.
+
+* Model 49911 is truncated (ASCII STL).
+* Model 74463 is empty.
+* Model 286163 is empty.
+* Model 81313 contains NURBS curves and surfaces instead of polygonal faces, which may not be supported by many OBJ parsers.
+* Model 77942 is corrupt (binary STL). Here is a potential replacement model created by a different user.
+
+## Acknowledgements
+
+We thank Marcel Campen, Chelsea Tymms, and Julian Panetta for early feedback and proofreading. This project is funded in part by NSF grants CMMI-11-29917, IIS-14-09286, and IIS-17257.
+
+We also thank Neil Dickson for pointing out corrupt models, and Nick Sharp for pointing out bugs in download script.
+
+## Cite us
+
+```bibtex
+@article{Thingi10K,
+  title={Thingi10K: A Dataset of 10,000 3D-Printing Models},
+  author={Zhou, Qingnan and Jacobson, Alec},
+  journal={arXiv preprint arXiv:1605.04797},
+  year={2016}
+}
+```
