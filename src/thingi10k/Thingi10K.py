@@ -1,8 +1,9 @@
 """Thingi10K: A Dataset of 10,000 3D-Printing Models"""
 
+import datasets
+import datetime
 import numpy as np
 import pathlib
-import datasets
 import polars as pl
 
 __version__ = "1.1.0"
@@ -144,11 +145,11 @@ class Thingi10K(datasets.GeneratorBasedBuilder):
         contextual_schema = {
             "Thing ID": pl.Int32,
             "Date": pl.Datetime,
-            "Category": pl.Categorical,
-            "Sub-category": pl.Categorical,
+            "Category": pl.String,
+            "Sub-category": pl.String,
             "Name": pl.String,
             "Author": pl.String,
-            "License": pl.Categorical,
+            "License": pl.String,
         }
         contextual_data = pl.read_csv(
             contextual_csv, schema_overrides=contextual_schema, ignore_errors=True
@@ -192,6 +193,16 @@ class Thingi10K(datasets.GeneratorBasedBuilder):
         thing_file_ids = summary_data.select(["ID", "Thing ID"])
         df = geometry_data.join(thing_file_ids, left_on="file_id", right_on="ID", how="left")
         df = df.join(contextual_data, on="Thing ID", how="left")
+
+        # Fill missing values
+        df = df.with_columns([
+            df["License"].fill_null("unknown").alias("License"),
+            df["Author"].fill_null("unknown").alias("Author"),
+            df["Date"].fill_null(datetime.datetime(1900, 1, 1)).alias("Date"),
+            df["Category"].fill_null("unknown").alias("Category"),
+            df["Sub-category"].fill_null("unknown").alias("Sub-category"),
+            df["Name"].fill_null("unknown").alias("Name"),
+        ])
 
         for idx, file_name in enumerate(npz_files):
             file_id = pathlib.Path(file_name).stem

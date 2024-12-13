@@ -2,6 +2,7 @@ from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 import datasets  # type: ignore
+import re
 
 from ._logger import logger
 
@@ -11,7 +12,10 @@ _dataset = None
 
 
 def dataset(
-    file_ids: int | npt.ArrayLike | None = None,
+    file_id: int | npt.ArrayLike | None = None,
+    thing_id: int | npt.ArrayLike | None = None,
+    author: str | npt.ArrayLike | None = None,
+    license: str | npt.ArrayLike | None = None,
     num_vertices: int | None | tuple[int | None, int | None] = None,
     num_facets: int | None | tuple[int | None, int | None] = None,
     num_components: int | None | tuple[int | None, int | None] = None,
@@ -26,7 +30,10 @@ def dataset(
 ):
     """Get the (filtered) dataset.
 
-    :param file_ids:     Filter by file ids.
+    :param file_id:     Filter by file ids.
+    :param thing_id:    Filter by thing ids.
+    :param author:       Filter by author.
+    :param license:      Filter by license.
     :param num_vertices: Filter by the number of vertices. If a tuple is provided, it is interpreted
                          as a range. If any of the lower or upper bound is None, it is not
                          considered in the filter.
@@ -52,10 +59,25 @@ def dataset(
     assert _dataset is not None, "Dataset is not initialized. Call init() first."
     d = _dataset["train"]
 
-    if file_ids is not None:
-        if isinstance(file_ids, int):
-            file_ids = [file_ids]
-        d = d.filter(lambda x: x["file_id"] in file_ids)
+    if file_id is not None:
+        if isinstance(file_id, int):
+            file_id = [file_id]
+        d = d.filter(lambda x: x["file_id"] in file_id)
+
+    if thing_id is not None:
+        if isinstance(thing_id, int):
+            thing_id = [thing_id]
+        d = d.filter(lambda x: x["thing_id"] in thing_id)
+
+    if author is not None:
+        if isinstance(author, str):
+            author = [author]
+        d = d.filter(lambda x: x["author"] in author)
+
+    if license is not None:
+        if isinstance(license, str):
+            license = [license]
+        d = d.filter(lambda x: any(re.search(lic, x['license'], re.IGNORECASE) for lic in license))
 
     if num_vertices is not None:
         if isinstance(num_vertices, int):
@@ -136,7 +158,7 @@ def init(
     cache_dir: str | None = None,
     force_redownload: bool = False,
 ):
-    """ Initialize the dataset.
+    """Initialize the dataset.
 
     :param cache_dir:        The directory where the dataset is cached.
     :param force_redownload: Whether to force redownload the dataset.
