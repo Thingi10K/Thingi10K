@@ -45,19 +45,58 @@ thingi10k.init() # Initial download of the dataset
 # Iterate over the entire dataset
 for entry in thingi10k.dataset():
     file_id = entry['file_id']
-    vertices, facets = thingi10k.load_file(entry['file_path'])
 
+    # Check contextual data
+    author = entry['author']
+    license = entry['license']
 
-# Iterate over closed mesh with at most 1000 vertices
-for entry in thingi10k.dataset(num_vertices=(None, 1000), closed=True):
-    file_id = entry['file_id']
+    # Load actual geometry
     vertices, facets = thingi10k.load_file(entry['file_path'])
+```
+
+### Caching the dataset
+
+By default, `thingi10k.init()` will cache the dataset in a local directory.
+Any subsequent calls to `thingi10k.init()` will use the cached dataset and incur no additional
+download cost.
+The cache directory can be explicitly specified by user:
+
+```py
+thigni10k.init(cache_dir="path/to/.thingi10k")
+```
+
+To force a re-download of the dataset:
+
+```py
+thingi10k.init(force_redownload=True)
+```
+
+### Filtering the dataset
+
+Thingi10K supports advanced filtering of the dataset based on geometric and contextual properties.
+See `help(thingi10k.dataset)` for a full list of supported filters. Here are some examples:
+
+```py
+# Filter by closed models
+closed_models = thingi10k.dataset(closed=True)
+
+# Filter by models without self-intersections
+no_self_intersections = thingi10k.dataset(self_intersecting=False)
+
+# Filter by the number of vertices (<100)
+small_models = thingi10k.dataset(num_vertices=(None, 100))
+
+# Models with a single component and is manifold
+single_manifold_models = thingi10k.dataset(num_components=1, manifold=True)
+
+# Models licensed under the Creative Commons license
+cc_models = thingi10k.dataset(license='creative commons')
 ```
 
 ## License
 
 The source code for organize and filter the Thingi10K dataset is licensed under the Apache License,
 Version 2.0. Each "thing" in the dataset is licensed under different licenses. Please refer to the
-...
+`license` field associated with each entry in the dataset.
 
 

@@ -21,6 +21,7 @@ def dataset(
     num_components: int | None | tuple[int | None, int | None] = None,
     closed: bool | None = None,
     self_intersecting: bool | None = None,
+    manifold: bool | None = None,
     vertex_manifold: bool | None = None,
     edge_manifold: bool | None = None,
     oriented: bool | None = None,
@@ -114,6 +115,9 @@ def dataset(
 
     if self_intersecting is not None:
         d = d.filter(lambda x: x["self_intersecting"] == self_intersecting)
+
+    if manifold is not None:
+        vertex_manifold = edge_manifold = manifold
 
     if vertex_manifold is not None:
         d = d.filter(lambda x: x["vertex_manifold"] == vertex_manifold)

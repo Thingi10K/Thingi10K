@@ -17,7 +17,6 @@ dependencies=[
     ]
 requires-python = ">=3.10"
 
-
 [mypy]
 plugins = "numpy.typing.mypy_plugin"
 follow_imports = "skip"
