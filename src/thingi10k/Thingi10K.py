@@ -158,7 +158,9 @@ class Thingi10K(datasets.GeneratorBasedBuilder):
         for idx, file_name in enumerate(npz_files):
             file_id = pathlib.Path(file_name).stem
 
-            metadata = df.row(idx, named=True)
+            #metadata = df.row(idx, named=True)
+            metadata = df.filter(df["file_id"] == int(file_id)).row(0, named=True)
+            assert metadata["file_id"] == int(file_id)
 
             # Yield the data, including the filename
             yield idx, {

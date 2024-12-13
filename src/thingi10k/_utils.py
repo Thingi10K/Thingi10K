@@ -132,8 +132,24 @@ def load_file(file_path: str) -> tuple[npt.ArrayLike, npt.ArrayLike]:
         return data["vertices"], data["facets"]
 
 
-def init():
+def init(
+    cache_dir: str | None = None,
+    force_redownload: bool = False,
+):
+    """ Initialize the dataset.
+
+    :param cache_dir:        The directory where the dataset is cached.
+    :param force_redownload: Whether to force redownload the dataset.
+    """
     global _dataset
+    if force_redownload:
+        download_mode = "force_redownload"
+    else:
+        download_mode = "reuse_dataset_if_exists"
+
     _dataset = datasets.load_dataset(
-        str((root / "Thingi10K.py").resolve()), trust_remote_code=True
+        str((root / "Thingi10K.py").resolve()),
+        trust_remote_code=True,
+        cache_dir=cache_dir,
+        download_mode=download_mode,
     )
