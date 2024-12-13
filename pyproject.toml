@@ -10,7 +10,6 @@ readme = "README.md"
 classifiers = ["License :: OSI Approved :: Apache Software License"]
 dynamic = ["description", "version"]
 dependencies=[
-    "colorama>=0.4.6",
     "datasets>=3.0",
     "numpy>=1.22",
     "polars>=1.0",

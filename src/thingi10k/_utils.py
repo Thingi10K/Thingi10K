@@ -4,10 +4,7 @@ import numpy.typing as npt
 import datasets  # type: ignore
 import re
 
-from ._logger import logger
-
 root = Path(__file__).parent
-metadata_dir = root / "metadata"
 _dataset = None
 
 
