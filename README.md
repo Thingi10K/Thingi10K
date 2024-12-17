@@ -32,7 +32,7 @@ Jacobson](http://www.cs.toronto.edu/~jacobson/).
 
 ## Raw dataset
 
-You can download the raw dataset from [Google drive](https://drive.google.com/file/d/0B4_KyPW4T9oGaktsb0ZLLWdxZXM/view?usp=drive_link&resourcekey=0-JwliN4T7sHkaNVUo2g4_ZQ).
+You can download the raw dataset at [Hugging Face](https://huggingface.co/datasets/Thingi10K/Thingi10K/tree/main).
 
 One can also obtain the dataset via the `thingi10k` Python package. It contains both geometric and
 contextual data extracted from the raw dataset, and provides a convenient API to access and filter
