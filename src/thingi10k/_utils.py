@@ -162,7 +162,7 @@ def load_file(file_path: str) -> tuple[npt.ArrayLike, npt.ArrayLike]:
             return data["vertices"], data["facets"]
     else:
         # Load raw mesh file with lagrange.
-        mesh = lagrange.io.read_mesh(file_path)
+        mesh = lagrange.io.load_mesh(file_path)
         return mesh.vertices, mesh.facets
 
 
