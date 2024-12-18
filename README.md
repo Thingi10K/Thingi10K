@@ -63,6 +63,21 @@ for entry in thingi10k.dataset():
     vertices, facets = thingi10k.load_file(entry['file_path'])
 ```
 
+### Variants
+
+Thingi10K provides two variants of the dataset: `npz` and `raw`.
+
+* `npz` variant contains the geometry (vertex and facet arrays) in NumPy arrays. It is faster to
+download and no mesh parsing is necessary.
+* `raw` variant contains the raw mesh files (STL, OBJ, etc.) in their original format. It is slower
+to download and requires parsing to extract geometric data.
+
+By default, `thingi10k.init()` will download the `npz` variant. To download the `raw` variant:
+
+```py
+thingi10k.init(variant='raw')
+```
+
 ### Caching the dataset
 
 By default, `thingi10k.init()` will cache the dataset in a local directory.

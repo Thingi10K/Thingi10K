@@ -3,6 +3,7 @@ import numpy as np
 import numpy.typing as npt
 import datasets  # type: ignore
 import re
+import lagrange
 
 root = Path(__file__).parent
 _dataset = None
@@ -75,7 +76,11 @@ def dataset(
     if license is not None:
         if isinstance(license, str):
             license = [license]
-        d = d.filter(lambda x: any(re.search(lic, x['license'], re.IGNORECASE) for lic in license))
+        d = d.filter(
+            lambda x: any(
+                re.search(lic, x["license"], re.IGNORECASE) for lic in license
+            )
+        )
 
     if num_vertices is not None:
         if isinstance(num_vertices, int):
@@ -151,16 +156,25 @@ def load_file(file_path: str) -> tuple[npt.ArrayLike, npt.ArrayLike]:
 
     :returns: The vertices and facets.
     """
-    with np.load(file_path) as data:
-        return data["vertices"], data["facets"]
+    if Path(file_path).suffix == ".npz":
+        # Unpack npz file.
+        with np.load(file_path) as data:
+            return data["vertices"], data["facets"]
+    else:
+        # Load raw mesh file with lagrange.
+        mesh = lagrange.io.read_mesh(file_path)
+        return mesh.vertices, mesh.facets
 
 
 def init(
+    variant: str | None = None,
     cache_dir: str | None = None,
     force_redownload: bool = False,
 ):
     """Initialize the dataset.
 
+    :param variant:          The variant of the dataset to load. Options are "npz" and "raw".
+                             Default is "npz".
     :param cache_dir:        The directory where the dataset is cached.
     :param force_redownload: Whether to force redownload the dataset.
     """
@@ -175,4 +189,5 @@ def init(
         trust_remote_code=True,
         cache_dir=cache_dir,
         download_mode=download_mode,
+        name=variant,
     )
