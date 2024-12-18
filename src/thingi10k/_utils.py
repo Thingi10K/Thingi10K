@@ -171,7 +171,7 @@ def init(
         download_mode = "reuse_dataset_if_exists"
 
     _dataset = datasets.load_dataset(
-        str((root / "Thingi10K.py").resolve()),
+        "Thingi10K/Thingi10K",
         trust_remote_code=True,
         cache_dir=cache_dir,
         download_mode=download_mode,

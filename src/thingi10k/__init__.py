@@ -20,6 +20,6 @@
     ```
 """
 
-from .Thingi10K import __version__
+__version__ = '1.1.2'
 
 from ._utils import load_file, init, dataset
