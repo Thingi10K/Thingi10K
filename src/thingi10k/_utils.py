@@ -4,6 +4,7 @@ import numpy.typing as npt
 import datasets  # type: ignore
 import re
 import lagrange
+from typing import Literal
 
 root = Path(__file__).parent
 _dataset = None
@@ -26,7 +27,7 @@ def dataset(
     pwn: bool | None = None,
     solid: bool | None = None,
     euler: int | None | tuple[int | None, int | None] = None,
-):
+) -> datasets.Dataset:
     """Get the (filtered) dataset.
 
     :param file_id:     Filter by file ids.
@@ -167,7 +168,7 @@ def load_file(file_path: str) -> tuple[npt.ArrayLike, npt.ArrayLike]:
 
 
 def init(
-    variant: str | None = None,
+    variant: Literal["npz", "raw"] | None = None,
     cache_dir: str | None = None,
     force_redownload: bool = False,
 ):
