@@ -72,6 +72,6 @@ Caching:
 
 """
 
-__version__ = '1.1.3'
+__version__ = '1.1.4'
 
 from ._utils import load_file, init, dataset
