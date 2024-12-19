@@ -38,17 +38,20 @@ One can also obtain the dataset via the `thingi10k` Python package. It contains 
 contextual data extracted from the raw dataset, and provides a convenient API to access and filter
 the dataset.
 
-## Installation
+## Usage
+
+In addition to the raw dataset, we provide a Python package `thingi10k` to facilitate easy access to
+the dataset. The package provides functions to download, filter, and load the dataset.
+
+### Installation
 
 ```sh
 pip install thingi10k
 ```
 
-## Usage
+### Simple usage
 
 ```py
-import thingi10k
-
 thingi10k.init() # Initial download of the dataset
 
 # Iterate over the entire dataset
@@ -63,7 +66,30 @@ for entry in thingi10k.dataset():
     vertices, facets = thingi10k.load_file(entry['file_path'])
 ```
 
-### Variants
+### Filtering the dataset
+
+Iterating over closed models with at most 100 vertices:
+
+```py
+for entry in thingi10k.dataset(num_vertices=(None, 100), closed=True):
+    vertices, facets = thingi10k.load_file(entry['file_path'])
+```
+
+Iterating over models licensed under Creative Commons:
+
+```py
+for entry in thingi10k.dataset(license='creative commons'):
+    vertices, facets = thingi10k.load_file(entry['file_path'])
+```
+
+Iterating over solid models with one component and no self-intersections:
+
+```py
+for entry in thingi10k.dataset(num_components=1, self_intersecting=False, solid=True):
+    vertices, facets = thingi10k.load_file(entry['file_path'])
+```
+
+### Dataset variants
 
 Thingi10K provides two variants of the dataset: `npz` and `raw`.
 
@@ -95,27 +121,6 @@ To force a re-download of the dataset:
 thingi10k.init(force_redownload=True)
 ```
 
-### Filtering the dataset
-
-Thingi10K supports advanced filtering of the dataset based on geometric and contextual properties.
-See `help(thingi10k.dataset)` for a full list of supported filters. Here are some examples:
-
-```py
-# Filter by closed models
-closed_models = thingi10k.dataset(closed=True)
-
-# Filter by models without self-intersections
-no_self_intersections = thingi10k.dataset(self_intersecting=False)
-
-# Filter by the number of vertices (<100)
-small_models = thingi10k.dataset(num_vertices=(None, 100))
-
-# Models with a single component and is manifold
-single_manifold_models = thingi10k.dataset(num_components=1, manifold=True)
-
-# Models licensed under the Creative Commons license
-cc_models = thingi10k.dataset(license='creative commons')
-```
 
 ## License
 
