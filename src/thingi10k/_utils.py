@@ -15,6 +15,10 @@ def dataset(
     thing_id: int | npt.ArrayLike | None = None,
     author: str | npt.ArrayLike | None = None,
     license: str | npt.ArrayLike | None = None,
+    category: str | npt.ArrayLike | None = None,
+    subcategory: str | npt.ArrayLike | None = None,
+    name: str | npt.ArrayLike | None = None,
+    tags: str | npt.ArrayLike | None = None,
     num_vertices: int | None | tuple[int | None, int | None] = None,
     num_facets: int | None | tuple[int | None, int | None] = None,
     num_components: int | None | tuple[int | None, int | None] = None,
@@ -30,10 +34,14 @@ def dataset(
 ) -> datasets.Dataset:
     """Get the (filtered) dataset.
 
-    :param file_id:     Filter by file ids.
-    :param thing_id:    Filter by thing ids.
-    :param author:       Filter by author.
-    :param license:      Filter by license.
+    :param file_id:      Filter by file ids. If an array is provided, match any of the values.
+    :param thing_id:     Filter by thing ids. If an array is provided, match any of the values.
+    :param author:       Filter by author. If an array is provided, match any of the values.
+    :param license:      Filter by license. If an array is provided, match any of the values.
+    :param category:     Filter by category. If an array is provided, match any of the values.
+    :param subcategory:  Filter by subcategory. If an array is provided, match any of the values.
+    :param name:         Filter by model name. If an array is provided, match any of the values.
+    :param tags:         Filter by tags. If an array is provided, match any of the values.
     :param num_vertices: Filter by the number of vertices. If a tuple is provided, it is interpreted
                          as a range. If any of the lower or upper bound is None, it is not
                          considered in the filter.
@@ -80,6 +88,41 @@ def dataset(
         d = d.filter(
             lambda x: any(
                 re.search(lic, x["license"], re.IGNORECASE) for lic in license
+            )
+        )
+
+    if category is not None:
+        if isinstance(category, str):
+            category = [category]
+        d = d.filter(
+            lambda x: any(
+                re.search(entry, x["category"], re.IGNORECASE) for entry in category
+            )
+        )
+
+    if subcategory is not None:
+        if isinstance(subcategory, str):
+            subcategory = [subcategory]
+        d = d.filter(
+            lambda x: any(
+                re.search(entry, x["subcategory"], re.IGNORECASE)
+                for entry in subcategory
+            )
+        )
+
+    if name is not None:
+        if isinstance(name, str):
+            name = [name]
+        d = d.filter(
+            lambda x: any(re.search(entry, x["name"], re.IGNORECASE) for entry in name)
+        )
+
+    if tags is not None:
+        if isinstance(tags, str):
+            tags = [tags]
+        d = d.filter(
+            lambda x: any(
+                re.search(entry, ",".join(x["tags"]), re.IGNORECASE) for entry in tags
             )
         )
 
