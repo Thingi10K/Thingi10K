@@ -32,14 +32,14 @@ Usage:
 
     Filter dataset based on contextual properties:
 
-    >>> for entry in thingi10k.dataset(license='creatve commons'):
+    >>> for entry in thingi10k.dataset(license='creative commons'):
     ...     # Iterate over all models with license containing 'creative commons'
     ...     file_id = entry['file_id']
     ...     vertices, facets = thingi10k.load_file(entry['file_path'])
 
     Filter dataset based on multiple properties:
 
-    >>> for entry in thingi10k.dataset(solid=True, num_components=1, license='creatve commons'):
+    >>> for entry in thingi10k.dataset(solid=True, num_components=1, license='creative commons'):
     ...     # Iterate over all solid models with one component and license containing
     ...     # 'creative commons'
     ...     file_id = entry['file_id']
