@@ -22,6 +22,7 @@ def dataset(
     num_vertices: int | None | tuple[int | None, int | None] = None,
     num_facets: int | None | tuple[int | None, int | None] = None,
     num_components: int | None | tuple[int | None, int | None] = None,
+    num_boundary_edges: int | None | tuple[int | None, int | None] = None,
     closed: bool | None = None,
     self_intersecting: bool | None = None,
     manifold: bool | None = None,
@@ -31,6 +32,7 @@ def dataset(
     pwn: bool | None = None,
     solid: bool | None = None,
     euler: int | None | tuple[int | None, int | None] = None,
+    genus: int | None | tuple[int | None, int | None] = None,
 ) -> datasets.Dataset:
     """Get the (filtered) dataset.
 
@@ -51,6 +53,9 @@ def dataset(
     :param num_components: Filter by the number of connected components. If a tuple is provided, it
                            is interpreted as a range. If any of the lower or upper bound is None, it
                            is not considered in the filter.
+    :param num_boundary_edges: Filter by the number of boundary edges. If a tuple is provided, it is
+                               interpreted as a range. If any of the lower or upper bound is None, it
+                               is not considered in the filter.
     :param closed:       Filter by open/closed meshes.
     :param self_intersecting: Filter by self-intersecting/non-self-intersecting meshes.
     :param vertex_manifold: Filter by vertex-manifold/non-vertex-manifold meshes.
@@ -61,6 +66,9 @@ def dataset(
     :param euler:        Filter by the Euler characteristic. If a tuple is provided, it is
                          interpreted as a range. If any of the lower or upper bound is None, it is
                          not considered in the filter.
+    :param genus:        Filter by the genus. If a tuple is provided, it is interpreted as a range.
+                         If any of the lower or upper bound is None, it is not considered in the
+                         filter.
 
     :returns: The filtered dataset.
     """
@@ -156,6 +164,16 @@ def dataset(
         if num_components[1] is not None:
             d = d.filter(lambda x: x["num_components"] <= num_components[1])
 
+    if num_boundary_edges is not None:
+        if isinstance(num_boundary_edges, int):
+            num_boundary_edges = (num_boundary_edges, num_boundary_edges)
+        assert isinstance(num_boundary_edges, tuple)
+        assert len(num_boundary_edges) == 2
+        if num_boundary_edges[0] is not None:
+            d = d.filter(lambda x: x["num_boundary_edges"] >= num_boundary_edges[0])
+        if num_boundary_edges[1] is not None:
+            d = d.filter(lambda x: x["num_boundary_edges"] <= num_boundary_edges[1])
+
     if closed is not None:
         d = d.filter(lambda x: x["closed"] == closed)
 
@@ -189,6 +207,28 @@ def dataset(
             d = d.filter(lambda x: x["euler"] >= euler[0])
         if euler[1] is not None:
             d = d.filter(lambda x: x["euler"] <= euler[1])
+
+    if genus is not None:
+        if isinstance(genus, int):
+            genus = (genus, genus)
+        assert isinstance(genus, tuple)
+        assert len(genus) == 2
+        if genus[0] is not None:
+            d = d.filter(
+                lambda x: x["num_components"] == 1
+                and x["num_boundary_edges"] == 0
+                and x["vertex_manifold"]
+                and x["euler"] % 2 == 0
+                and (2 - x["euler"]) // 2 >= genus[0]
+            )
+        if genus[1] is not None:
+            d = d.filter(
+                lambda x: x["num_components"] == 1
+                and x["num_boundary_edges"] == 0
+                and x["vertex_manifold"]
+                and x["euler"] % 2 == 0
+                and (2 - x["euler"]) // 2 <= genus[1]
+            )
 
     return d
 
