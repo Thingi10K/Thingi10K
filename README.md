@@ -52,42 +52,59 @@ pip install thingi10k
 ### Simple usage
 
 ```py
-thingi10k.init() # Initial download of the dataset
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#   "thingi10k",
+# ]
+# ///
 
-# Iterate over the entire dataset
+import thingi10k
+
+thingi10k.init() # Download the dataset and update cache
+
+# Loop through all entries in the dataset
 for entry in thingi10k.dataset():
     file_id = entry['file_id']
-
-    # Check contextual data
     author = entry['author']
-    license = entry['license']
-
-    # Load actual geometry
+    license = entry['licence']
     vertices, facets = thingi10k.load_file(entry['file_path'])
+    # Do something with the vertices and facets
+
+help(thingi10k) # for more information
 ```
 
 ### Filtering the dataset
 
-Iterating over closed models with at most 100 vertices:
+The `thingi10k.dataset()` function provides a convenient way to filter the dataset based on various
+geometric and contextual criteria. The function returns an iterator over the filtered entries. The
+following are some examples of filtering the dataset:
+
+The example below demonstrates how to iterate over models in the Thingi10K dataset that are
+closed and have at most 100 vertices.
 
 ```py
 for entry in thingi10k.dataset(num_vertices=(None, 100), closed=True):
     vertices, facets = thingi10k.load_file(entry['file_path'])
 ```
 
-Iterating over models licensed under Creative Commons:
+The following example shows how to filter and iterate over models that are licensed under Creative
+Commons.
 
 ```py
 for entry in thingi10k.dataset(license='creative commons'):
     vertices, facets = thingi10k.load_file(entry['file_path'])
 ```
 
-Iterating over solid models with one component and no self-intersections:
+This example illustrates how to iterate over models that are solid, consist of a single component,
+and have no self-intersections.
 
 ```py
 for entry in thingi10k.dataset(num_components=1, self_intersecting=False, solid=True):
     vertices, facets = thingi10k.load_file(entry['file_path'])
 ```
+
+Please see `help(thingi10k.dataset)` for all available filtering options.
 
 ### Dataset variants
 
