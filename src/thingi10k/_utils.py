@@ -5,6 +5,7 @@ import datasets  # type: ignore
 import re
 import lagrange
 from typing import Literal
+from ._builder import Thingi10KBuilder
 
 root = Path(__file__).parent
 _dataset = None
@@ -263,15 +264,11 @@ def init(
     :param force_redownload: Whether to force redownload the dataset.
     """
     global _dataset
-    if force_redownload:
-        download_mode = "force_redownload"
-    else:
-        download_mode = "reuse_dataset_if_exists"
 
-    _dataset = datasets.load_dataset(
-        "Thingi10K/Thingi10K",
-        trust_remote_code=True,
-        cache_dir=cache_dir,
-        download_mode=download_mode,
-        name=variant,
-    )
+    download_config = datasets.DownloadConfig()
+    download_config.cache_dir = cache_dir
+    download_config.force_download = force_redownload
+
+    builder = Thingi10KBuilder(config=variant)
+    builder.download_and_prepare(download_config=download_config)
+    _dataset = builder.as_dataset()
