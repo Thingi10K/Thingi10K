@@ -17,6 +17,15 @@ dependencies=[
     ]
 requires-python = ">=3.10"
 
+[dependency-groups]
+test = [
+    "pytest>=7.0.0",
+]
+lint = [
+    "mypy==1.15.0",
+    "ruff==0.9.5",
+]
+
 [mypy]
 plugins = "numpy.typing.mypy_plugin"
 follow_imports = "skip"
