@@ -70,7 +70,7 @@ thingi10k.init() # Download the dataset and update cache
 for entry in thingi10k.dataset():
     file_id = entry['file_id']
     author = entry['author']
-    license = entry['licence']
+    license = entry['license']
     vertices, facets = thingi10k.load_file(entry['file_path'])
     # Do something with the vertices and facets
 

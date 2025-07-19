@@ -51,7 +51,7 @@ Variants of the dataset:
 
     * The `raw` variant contains the raw mesh files in the dataset. It is slower to download and
       requires parsing the mesh files.
-    * The `npz` variant contains the extracted geometry in npz format. Is is faster to download and
+    * The `npz` variant contains the extracted geometry in npz format. It is faster to download and
       does not require parsing the mesh files. This is the default.
 
     Use the `variant` argument of the `init()` function to load the desired variant:
