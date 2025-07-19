@@ -4,10 +4,175 @@ import numpy.typing as npt
 import datasets  # type: ignore
 import re
 import lagrange
-from typing import Literal
+import logging
+from typing import Literal, Union, Any, Sequence
+from ._builder import Thingi10KBuilder
+
+# Set up logger
+logger = logging.getLogger(__name__)
 
 root = Path(__file__).parent
 _dataset = None
+
+# Type aliases for better readability
+FilterValueType = Union[int, str, bool, None]
+ArrayLikeType = Union[npt.ArrayLike, Sequence[Any]]
+RangeType = Union[int, None, tuple[int | None, int | None]]
+
+
+class DatasetFilters:
+    """Helper class to organize dataset filtering logic."""
+
+    @staticmethod
+    def _normalize_to_list(value: Union[FilterValueType, ArrayLikeType]) -> list:
+        """Convert single values or array-like to list."""
+        if isinstance(value, (int, str)):
+            return [value]
+        return list(value) if value is not None else []
+
+    @staticmethod
+    def _normalize_range(value: RangeType) -> tuple[int | None, int | None]:
+        """Normalize range input to tuple format."""
+        if isinstance(value, int):
+            return (value, value)
+        if isinstance(value, tuple) and len(value) == 2:
+            return value
+        if value is None:
+            return (None, None)
+        raise ValueError(
+            f"Invalid range format: {value}. Expected int, tuple of 2 ints, or None."
+        )
+
+    @staticmethod
+    def apply_exact_filters(dataset: datasets.Dataset, **filters) -> datasets.Dataset:
+        """Apply filters for exact matches."""
+        d = dataset
+
+        # ID-based filters
+        for field in ["file_id", "thing_id"]:
+            if filters.get(field) is not None:
+                values = DatasetFilters._normalize_to_list(filters[field])
+                d = d.filter(lambda x, field=field, values=values: x[field] in values)
+
+        # String-based filters (exact matches)
+        if filters.get("author") is not None:
+            authors = DatasetFilters._normalize_to_list(filters["author"])
+            d = d.filter(lambda x: x["author"] in authors)
+
+        # Boolean filters
+        for field in [
+            "closed",
+            "self_intersecting",
+            "vertex_manifold",
+            "edge_manifold",
+            "oriented",
+            "solid",
+        ]:
+            if filters.get(field) is not None:
+                d = d.filter(
+                    lambda x, field=field, value=filters[field]: x[field] == value
+                )
+
+        # Special case for PWN (different field name)
+        if filters.get("pwn") is not None:
+            d = d.filter(lambda x: x["PWN"] == filters["pwn"])
+
+        return d
+
+    @staticmethod
+    def apply_regex_filters(dataset: datasets.Dataset, **filters) -> datasets.Dataset:
+        """Apply filters using regex pattern matching."""
+        d = dataset
+
+        # String fields with regex matching
+        regex_fields = ["license", "category", "subcategory", "name"]
+        for field in regex_fields:
+            if filters.get(field) is not None:
+                patterns = DatasetFilters._normalize_to_list(filters[field])
+                d = d.filter(
+                    lambda x, field=field, patterns=patterns: any(
+                        re.search(pattern, x[field], re.IGNORECASE)
+                        for pattern in patterns
+                    )
+                )
+
+        # Tags require special handling
+        if filters.get("tags") is not None:
+            tag_patterns = DatasetFilters._normalize_to_list(filters["tags"])
+            d = d.filter(
+                lambda x: any(
+                    re.search(pattern, ",".join(x["tags"]), re.IGNORECASE)
+                    for pattern in tag_patterns
+                )
+            )
+
+        return d
+
+    @staticmethod
+    def apply_range_filters(dataset: datasets.Dataset, **filters) -> datasets.Dataset:
+        """Apply filters for numeric ranges."""
+        d = dataset
+
+        range_fields = [
+            "num_vertices",
+            "num_facets",
+            "num_components",
+            "num_boundary_edges",
+            "euler",
+        ]
+
+        for field in range_fields:
+            if filters.get(field) is not None:
+                try:
+                    min_val, max_val = DatasetFilters._normalize_range(filters[field])
+                    if min_val is not None:
+                        d = d.filter(
+                            lambda x, field=field, min_val=min_val: x[field] >= min_val
+                        )
+                    if max_val is not None:
+                        d = d.filter(
+                            lambda x, field=field, max_val=max_val: x[field] <= max_val
+                        )
+                except ValueError as e:
+                    logger.warning(f"Invalid range for {field}: {e}")
+                    continue
+
+        return d
+
+    @staticmethod
+    def apply_genus_filter(
+        dataset: datasets.Dataset, genus: RangeType
+    ) -> datasets.Dataset:
+        """Apply complex genus filter with validation."""
+        if genus is None:
+            return dataset
+
+        try:
+            min_genus, max_genus = DatasetFilters._normalize_range(genus)
+        except ValueError as e:
+            logger.warning(f"Invalid genus range: {e}")
+            return dataset
+
+        d = dataset
+
+        # Common conditions for genus calculation
+        base_conditions = lambda x: (
+            x["num_components"] == 1
+            and x["num_boundary_edges"] == 0
+            and x["vertex_manifold"]
+            and x["euler"] % 2 == 0
+        )
+
+        if min_genus is not None:
+            d = d.filter(
+                lambda x: base_conditions(x) and (2 - x["euler"]) // 2 >= min_genus
+            )
+        if max_genus is not None:
+            d = d.filter(
+                lambda x: base_conditions(x) and (2 - x["euler"]) // 2 <= max_genus
+            )
+
+        return d
 
 
 def dataset(
@@ -58,6 +223,7 @@ def dataset(
                                is not considered in the filter.
     :param closed:       Filter by open/closed meshes.
     :param self_intersecting: Filter by self-intersecting/non-self-intersecting meshes.
+    :param manifold:     Filter by manifold/non-manifold meshes (sets both vertex and edge manifold).
     :param vertex_manifold: Filter by vertex-manifold/non-vertex-manifold meshes.
     :param edge_manifold: Filter by edge-manifold/non-edge-manifold meshes.
     :param oriented:     Filter by oriented/non-oriented meshes.
@@ -71,207 +237,114 @@ def dataset(
                          filter.
 
     :returns: The filtered dataset.
+
+    :raises RuntimeError: If dataset is not initialized.
     """
-    assert _dataset is not None, "Dataset is not initialized. Call init() first."
-    d = _dataset["train"]
+    if _dataset is None:
+        raise RuntimeError("Dataset is not initialized. Call init() first.")
 
-    if file_id is not None:
-        if isinstance(file_id, int):
-            file_id = [file_id]
-        d = d.filter(lambda x: x["file_id"] in file_id)
-
-    if thing_id is not None:
-        if isinstance(thing_id, int):
-            thing_id = [thing_id]
-        d = d.filter(lambda x: x["thing_id"] in thing_id)
-
-    if author is not None:
-        if isinstance(author, str):
-            author = [author]
-        d = d.filter(lambda x: x["author"] in author)
-
-    if license is not None:
-        if isinstance(license, str):
-            license = [license]
-        d = d.filter(
-            lambda x: any(
-                re.search(lic, x["license"], re.IGNORECASE) for lic in license
-            )
-        )
-
-    if category is not None:
-        if isinstance(category, str):
-            category = [category]
-        d = d.filter(
-            lambda x: any(
-                re.search(entry, x["category"], re.IGNORECASE) for entry in category
-            )
-        )
-
-    if subcategory is not None:
-        if isinstance(subcategory, str):
-            subcategory = [subcategory]
-        d = d.filter(
-            lambda x: any(
-                re.search(entry, x["subcategory"], re.IGNORECASE)
-                for entry in subcategory
-            )
-        )
-
-    if name is not None:
-        if isinstance(name, str):
-            name = [name]
-        d = d.filter(
-            lambda x: any(re.search(entry, x["name"], re.IGNORECASE) for entry in name)
-        )
-
-    if tags is not None:
-        if isinstance(tags, str):
-            tags = [tags]
-        d = d.filter(
-            lambda x: any(
-                re.search(entry, ",".join(x["tags"]), re.IGNORECASE) for entry in tags
-            )
-        )
-
-    if num_vertices is not None:
-        if isinstance(num_vertices, int):
-            num_vertices = (num_vertices, num_vertices)
-        assert isinstance(num_vertices, tuple)
-        assert len(num_vertices) == 2
-        if num_vertices[0] is not None:
-            d = d.filter(lambda x: x["num_vertices"] >= num_vertices[0])
-        if num_vertices[1] is not None:
-            d = d.filter(lambda x: x["num_vertices"] <= num_vertices[1])
-
-    if num_facets is not None:
-        if isinstance(num_facets, int):
-            num_facets = (num_facets, num_facets)
-        assert isinstance(num_facets, tuple)
-        assert len(num_facets) == 2
-        if num_facets[0] is not None:
-            d = d.filter(lambda x: x["num_facets"] >= num_facets[0])
-        if num_facets[1] is not None:
-            d = d.filter(lambda x: x["num_facets"] <= num_facets[1])
-
-    if num_components is not None:
-        if isinstance(num_components, int):
-            num_components = (num_components, num_components)
-        assert isinstance(num_components, tuple)
-        assert len(num_components) == 2
-        if num_components[0] is not None:
-            d = d.filter(lambda x: x["num_components"] >= num_components[0])
-        if num_components[1] is not None:
-            d = d.filter(lambda x: x["num_components"] <= num_components[1])
-
-    if num_boundary_edges is not None:
-        if isinstance(num_boundary_edges, int):
-            num_boundary_edges = (num_boundary_edges, num_boundary_edges)
-        assert isinstance(num_boundary_edges, tuple)
-        assert len(num_boundary_edges) == 2
-        if num_boundary_edges[0] is not None:
-            d = d.filter(lambda x: x["num_boundary_edges"] >= num_boundary_edges[0])
-        if num_boundary_edges[1] is not None:
-            d = d.filter(lambda x: x["num_boundary_edges"] <= num_boundary_edges[1])
-
-    if closed is not None:
-        d = d.filter(lambda x: x["closed"] == closed)
-
-    if self_intersecting is not None:
-        d = d.filter(lambda x: x["self_intersecting"] == self_intersecting)
-
+    # Handle manifold parameter (affects both vertex and edge manifold)
     if manifold is not None:
         vertex_manifold = edge_manifold = manifold
 
-    if vertex_manifold is not None:
-        d = d.filter(lambda x: x["vertex_manifold"] == vertex_manifold)
+    # Prepare filter arguments
+    filter_args = {
+        "file_id": file_id,
+        "thing_id": thing_id,
+        "author": author,
+        "license": license,
+        "category": category,
+        "subcategory": subcategory,
+        "name": name,
+        "tags": tags,
+        "num_vertices": num_vertices,
+        "num_facets": num_facets,
+        "num_components": num_components,
+        "num_boundary_edges": num_boundary_edges,
+        "closed": closed,
+        "self_intersecting": self_intersecting,
+        "vertex_manifold": vertex_manifold,
+        "edge_manifold": edge_manifold,
+        "oriented": oriented,
+        "pwn": pwn,
+        "solid": solid,
+        "euler": euler,
+    }
 
-    if edge_manifold is not None:
-        d = d.filter(lambda x: x["edge_manifold"] == edge_manifold)
+    # Apply filters in logical groups
+    d = _dataset["train"]
+    d = DatasetFilters.apply_exact_filters(d, **filter_args)
+    d = DatasetFilters.apply_regex_filters(d, **filter_args)
+    d = DatasetFilters.apply_range_filters(d, **filter_args)
+    d = DatasetFilters.apply_genus_filter(d, genus)
 
-    if oriented is not None:
-        d = d.filter(lambda x: x["oriented"] == oriented)
-
-    if pwn is not None:
-        d = d.filter(lambda x: x["PWN"] == pwn)
-
-    if solid is not None:
-        d = d.filter(lambda x: x["solid"] == solid)
-
-    if euler is not None:
-        if isinstance(euler, int):
-            euler = (euler, euler)
-        assert isinstance(euler, tuple)
-        assert len(euler) == 2
-        if euler[0] is not None:
-            d = d.filter(lambda x: x["euler"] >= euler[0])
-        if euler[1] is not None:
-            d = d.filter(lambda x: x["euler"] <= euler[1])
-
-    if genus is not None:
-        if isinstance(genus, int):
-            genus = (genus, genus)
-        assert isinstance(genus, tuple)
-        assert len(genus) == 2
-        if genus[0] is not None:
-            d = d.filter(
-                lambda x: x["num_components"] == 1
-                and x["num_boundary_edges"] == 0
-                and x["vertex_manifold"]
-                and x["euler"] % 2 == 0
-                and (2 - x["euler"]) // 2 >= genus[0]
-            )
-        if genus[1] is not None:
-            d = d.filter(
-                lambda x: x["num_components"] == 1
-                and x["num_boundary_edges"] == 0
-                and x["vertex_manifold"]
-                and x["euler"] % 2 == 0
-                and (2 - x["euler"]) // 2 <= genus[1]
-            )
-
+    logger.info(f"Filtered dataset from {len(_dataset['train'])} to {len(d)} entries")
     return d
 
 
-def load_file(file_path: str) -> tuple[npt.ArrayLike, npt.ArrayLike]:
+def load_file(
+    file_path: str,
+) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.integer]]:
     """Load the vertices and facets from a file.
 
     :param file_path: The path to the file.
+    :returns: The vertices and facets as numpy arrays.
 
-    :returns: The vertices and facets.
+    :raises FileNotFoundError: If the file doesn't exist.
+    :raises ValueError: If the file format is unsupported or corrupted.
     """
-    if Path(file_path).suffix == ".npz":
-        # Unpack npz file.
-        with np.load(file_path) as data:
-            return data["vertices"], data["facets"]
-    else:
-        # Load raw mesh file with lagrange.
-        mesh = lagrange.io.load_mesh(file_path)
-        return mesh.vertices, mesh.facets
+    file_path_obj = Path(file_path)
+
+    if not file_path_obj.exists():
+        raise FileNotFoundError(f"File not found: {file_path}")
+
+    try:
+        if file_path_obj.suffix == ".npz":
+            # Unpack npz file
+            with np.load(file_path) as data:
+                if "vertices" not in data or "facets" not in data:
+                    raise ValueError(f"NPZ file missing required arrays: {file_path}")
+                return data["vertices"], data["facets"]
+        else:
+            # Load raw mesh file with lagrange
+            mesh = lagrange.io.load_mesh(file_path)
+            return mesh.vertices, mesh.facets
+    except Exception as e:
+        raise ValueError(f"Failed to load mesh file {file_path}: {e}") from e
 
 
 def init(
     variant: Literal["npz", "raw"] | None = None,
     cache_dir: str | None = None,
     force_redownload: bool = False,
-):
+) -> None:
     """Initialize the dataset.
 
     :param variant:          The variant of the dataset to load. Options are "npz" and "raw".
                              Default is "npz".
     :param cache_dir:        The directory where the dataset is cached.
     :param force_redownload: Whether to force redownload the dataset.
+
+    :raises ValueError: If variant is not supported.
+    :raises RuntimeError: If dataset initialization fails.
     """
     global _dataset
-    if force_redownload:
-        download_mode = "force_redownload"
-    else:
-        download_mode = "reuse_dataset_if_exists"
 
-    _dataset = datasets.load_dataset(
-        "Thingi10K/Thingi10K",
-        trust_remote_code=True,
-        cache_dir=cache_dir,
-        download_mode=download_mode,
-        name=variant,
-    )
+    if variant is not None and variant not in ["npz", "raw"]:
+        raise ValueError(f"Unsupported variant: {variant}. Must be 'npz' or 'raw'.")
+
+    try:
+        download_config = datasets.DownloadConfig()
+        if cache_dir is not None:
+            download_config.cache_dir = cache_dir
+        download_config.force_download = force_redownload
+
+        builder = Thingi10KBuilder(config=variant)
+        builder.download_and_prepare(download_config=download_config)
+        _dataset = builder.as_dataset()
+
+        logger.info(
+            f"Dataset initialized with {len(_dataset['train'])} entries using variant '{variant or 'npz'}'"
+        )
+    except Exception as e:
+        raise RuntimeError(f"Failed to initialize dataset: {e}") from e

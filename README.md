@@ -70,7 +70,7 @@ thingi10k.init() # Download the dataset and update cache
 for entry in thingi10k.dataset():
     file_id = entry['file_id']
     author = entry['author']
-    license = entry['licence']
+    license = entry['license']
     vertices, facets = thingi10k.load_file(entry['file_path'])
     # Do something with the vertices and facets
 
@@ -80,8 +80,10 @@ help(thingi10k) # for more information
 ### Filtering the dataset
 
 The `thingi10k.dataset()` function provides a convenient way to filter the dataset based on various
-geometric and contextual criteria. The function returns an iterator over the filtered entries. The
-following are some examples of filtering the dataset:
+geometric and contextual criteria. The function returns an iterator over the filtered entries. For
+numeric filters, you can specify ranges using tuples where `(min, max)` sets both bounds, `(None,
+max)` sets only an upper bound, and `(min, None)` sets only a lower bound. The following are some
+examples of filtering the dataset:
 
 The example below demonstrates how to iterate over models in the Thingi10K dataset that are
 closed and have at most 100 vertices.
@@ -144,27 +146,30 @@ thingi10k.init(force_redownload=True)
 
 ## License
 
-The source code for organizing and filtering the Thingi10K dataset is licensed under the Apache License,
-Version 2.0. Each "thing" in the dataset is licensed under different licenses. Please refer to the
-`license` field associated with each entry in the dataset.
+The source code for organizing and filtering the Thingi10K dataset is licensed under the Apache
+License, Version 2.0. Each "thing" in the dataset is licensed under different licenses. Please refer
+to the `license` field associated with each entry in the dataset.
 
 ## Errata
 
-The following models are known to be "corrupt." However, we decide to still include them in our dataset in order to faithfully reflect mesh qualities on Thingiverse.
+The following models are known to be "corrupt." However, we decide to still include them in our
+dataset in order to faithfully reflect mesh qualities on Thingiverse.
 
 * Model 49911 is truncated (ASCII STL).
 * Model 74463 is empty.
 * Model 286163 is empty.
-* Model 81313 contains NURBS curves and surfaces instead of polygonal faces, which may not be supported by many OBJ parsers.
+* Model 81313 contains NURBS curves and surfaces instead of polygonal faces, which may not be
+supported by many OBJ parsers.
 * Model 77942 is corrupt (binary STL).
 
 ## Acknowledgements
 
 This project is funded in part by NSF grants CMMI-11-29917, IIS-14-09286, and IIS-17257.
 
-We thank Marcel Campen, Chelsea Tymms, and Julian Panetta for early feedback and proofreading.
-We also thank Neil Dickson for pointing out corrupt models, and Nick Sharp for pointing out bugs in download script.
-Lastly, we thank Silvia Sellán and Yun-Chun Chen for discussion and suggestion on hosting the dataset.
+We thank Marcel Campen, Chelsea Tymms, and Julian Panetta for early feedback and proofreading. We
+also thank Neil Dickson for pointing out corrupt models, and Nick Sharp for pointing out bugs in
+download script. Lastly, we thank Silvia Sellán and Yun-Chun Chen for discussion and suggestion on
+hosting the dataset.
 
 ## Cite us
 
