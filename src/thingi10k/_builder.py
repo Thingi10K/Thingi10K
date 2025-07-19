@@ -6,7 +6,7 @@ import logging
 import numpy as np
 import pathlib
 import polars as pl
-from typing import Dict, List, Iterator, Tuple
+from typing import Any, Dict, List, Iterator, Tuple
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -34,9 +34,10 @@ _LICENSE = ""  # See license field associated with each model.
 
 class DatasetConfig:
     """Configuration constants for the Thingi10K dataset."""
+
     REPO_URL = "https://huggingface.co/datasets/Thingi10K/Thingi10K/resolve/main"
     CORRUPT_FILE_IDS = frozenset([49911, 74463, 286163, 77942])
-    
+
     # Schema definitions
     GEOMETRY_SCHEMA = {
         "file_id": pl.Int32,
@@ -89,7 +90,7 @@ class DatasetConfig:
         "ave_dihedral_angle": pl.Float64,
         "ave_aspect_ratio": pl.Float64,
     }
-    
+
     # Default date for missing values
     DEFAULT_DATE = datetime.datetime(1900, 1, 1)
 
@@ -161,41 +162,50 @@ class Thingi10KBuilder(datasets.GeneratorBasedBuilder):
         """
         csv_files = self._download_metadata_files(dl_manager)
         dataframes = self._load_and_process_csv_files(csv_files)
-        downloaded_files = self._prepare_dataset_files(dl_manager, dataframes['geometry'], dataframes['summary'])
-        
+        downloaded_files = self._prepare_dataset_files(
+            dl_manager, dataframes["geometry"], dataframes["summary"]
+        )
+
         return [
             datasets.SplitGenerator(
                 name=datasets.Split.TRAIN,
-                gen_kwargs={
-                    "downloaded_files": downloaded_files,
-                    **dataframes
-                },
+                gen_kwargs={"downloaded_files": downloaded_files, **dataframes},
             )
         ]
 
     def _download_metadata_files(self, dl_manager) -> dict[str, str]:
         """Download all required CSV metadata files."""
         metadata_url = f"{DatasetConfig.REPO_URL}/metadata"
-        
+
         files = {}
-        for file_type in ['geometry_data', 'contextual_data', 'input_summary', 'tag_data']:
+        for file_type in [
+            "geometry_data",
+            "contextual_data",
+            "input_summary",
+            "tag_data",
+        ]:
             url = f"{metadata_url}/{file_type}.csv"
             files[file_type] = dl_manager.download(url)
-            
+
             # Validate file exists
             if not pathlib.Path(files[file_type]).exists():
                 raise FileNotFoundError(f"Failed to download {file_type}.csv")
-        
+
         return files
 
-    def _load_and_process_csv_files(self, csv_files: dict[str, str]) -> dict[str, pl.DataFrame]:
+    def _load_and_process_csv_files(
+        self, csv_files: dict[str, str]
+    ) -> dict[str, pl.DataFrame]:
         """Load and process CSV files into Polars DataFrames."""
         dataframes = {}
+        schema: Dict[str, Any] = {}
         for file_type, file_path in csv_files.items():
-            if file_type == 'geometry_data':
+            if file_type == "geometry_data":
                 schema = DatasetConfig.GEOMETRY_SCHEMA
-                dataframes['geometry'] = pl.read_csv(file_path, schema_overrides=schema, ignore_errors=True)
-            elif file_type == 'contextual_data':
+                dataframes["geometry"] = pl.read_csv(
+                    file_path, schema_overrides=schema, ignore_errors=True
+                )
+            elif file_type == "contextual_data":
                 schema = {
                     "Thing ID": pl.Int32,
                     "Date": pl.Datetime,
@@ -205,43 +215,64 @@ class Thingi10KBuilder(datasets.GeneratorBasedBuilder):
                     "Author": pl.String,
                     "License": pl.String,
                 }
-                dataframes['contextual'] = pl.read_csv(file_path, schema_overrides=schema, ignore_errors=True)
-            elif file_type == 'input_summary':
+                dataframes["contextual"] = pl.read_csv(
+                    file_path, schema_overrides=schema, ignore_errors=True
+                )
+            elif file_type == "input_summary":
                 schema = {
                     "ID": pl.Int32,
                     "Thing ID": pl.Int32,
                 }
-                dataframes['summary'] = pl.read_csv(file_path, schema_overrides=schema, ignore_errors=True)
-            elif file_type == 'tag_data':
+                dataframes["summary"] = pl.read_csv(
+                    file_path, schema_overrides=schema, ignore_errors=True
+                )
+            elif file_type == "tag_data":
                 schema = {
                     "Thing ID": pl.Int32,
                     "Tag": pl.String,
                 }
-                dataframes['tag'] = pl.read_csv(file_path, schema_overrides=schema, ignore_errors=True)
+                dataframes["tag"] = pl.read_csv(
+                    file_path, schema_overrides=schema, ignore_errors=True
+                )
         return dataframes
 
-    def _prepare_dataset_files(self, dl_manager, geometry_data: pl.DataFrame, summary_data: pl.DataFrame) -> list[pathlib.Path]:
+    def _prepare_dataset_files(
+        self, dl_manager, geometry_data: pl.DataFrame, summary_data: pl.DataFrame
+    ) -> list[pathlib.Path]:
         """Prepare the dataset files for download."""
         repo_url = DatasetConfig.REPO_URL
 
         file_ids = geometry_data["file_id"]
 
         if self.config.name == "npz":
-            extraction_dir = dl_manager.download_and_extract(f"{repo_url}/Thingi10K_npz.tar.gz")
+            extraction_dir = dl_manager.download_and_extract(
+                f"{repo_url}/Thingi10K_npz.tar.gz"
+            )
             extraction_dir = pathlib.Path(extraction_dir)
             if not extraction_dir.exists() or not extraction_dir.is_dir():
-                raise FileNotFoundError(f"Extraction directory not found: {extraction_dir}")
+                raise FileNotFoundError(
+                    f"Extraction directory not found: {extraction_dir}"
+                )
             downloaded_files = [
-                extraction_dir / "npz" / f"{file_id}.npz" for file_id in file_ids if file_id not in DatasetConfig.CORRUPT_FILE_IDS
+                extraction_dir / "npz" / f"{file_id}.npz"
+                for file_id in file_ids
+                if file_id not in DatasetConfig.CORRUPT_FILE_IDS
             ]
         elif self.config.name == "raw":
             raw_data = summary_data.select(["ID", "Link"])
-            extraction_dir = dl_manager.download_and_extract(f"{repo_url}/Thingi10K.tar.gz")
+            extraction_dir = dl_manager.download_and_extract(
+                f"{repo_url}/Thingi10K.tar.gz"
+            )
             extraction_dir = pathlib.Path(extraction_dir)
             if not extraction_dir.exists() or not extraction_dir.is_dir():
-                raise FileNotFoundError(f"Extraction directory not found: {extraction_dir}")
+                raise FileNotFoundError(
+                    f"Extraction directory not found: {extraction_dir}"
+                )
             downloaded_files = [
-                extraction_dir / "Thingi10K" / "raw_meshes" / f"{row[0]}.{row[1].split('.')[-1].lower()}"
+                extraction_dir
+                / "Thingi10K"
+                / "raw_meshes"
+                / f"{row[0]}.{row[1].split('.')[-1].lower()}"
                 for row in raw_data.iter_rows()
                 if row[0] not in DatasetConfig.CORRUPT_FILE_IDS
             ]
@@ -250,30 +281,33 @@ class Thingi10KBuilder(datasets.GeneratorBasedBuilder):
 
         return downloaded_files
 
-    def _prepare_dataframe(self, geometry_data: pl.DataFrame, 
-                      contextual_data: pl.DataFrame,
-                      summary_data: pl.DataFrame, 
-                      tag_data: pl.DataFrame) -> pl.DataFrame:
+    def _prepare_dataframe(
+        self,
+        geometry_data: pl.DataFrame,
+        contextual_data: pl.DataFrame,
+        summary_data: pl.DataFrame,
+        tag_data: pl.DataFrame,
+    ) -> pl.DataFrame:
         """Prepare and join all dataframes efficiently."""
-        
+
         # Start with geometry data
         df = geometry_data
-        
+
         # Join with summary data (thing file IDs)
         if summary_data is not None:
             df = df.join(summary_data, left_on="file_id", right_on="ID", how="left")
-        
+
         # Join with contextual data
         if contextual_data is not None:
             df = df.join(contextual_data, on="Thing ID", how="left")
-        
+
         # Pre-process and join tag data
         if tag_data is not None:
             tag_data_agg = tag_data.group_by("Thing ID").agg(
                 pl.col("Tag").alias("Tags")
             )
             df = df.join(tag_data_agg, on="Thing ID", how="left")
-        
+
         # Fill nulls in one operation (only if columns exist)
         fill_expressions = []
         if "License" in df.columns:
@@ -281,7 +315,9 @@ class Thingi10KBuilder(datasets.GeneratorBasedBuilder):
         if "Author" in df.columns:
             fill_expressions.append(pl.col("Author").fill_null("unknown"))
         if "Date" in df.columns:
-            fill_expressions.append(pl.col("Date").fill_null(DatasetConfig.DEFAULT_DATE))
+            fill_expressions.append(
+                pl.col("Date").fill_null(DatasetConfig.DEFAULT_DATE)
+            )
         if "Category" in df.columns:
             fill_expressions.append(pl.col("Category").fill_null("unknown"))
         if "Sub-category" in df.columns:
@@ -290,41 +326,40 @@ class Thingi10KBuilder(datasets.GeneratorBasedBuilder):
             fill_expressions.append(pl.col("Name").fill_null("unknown"))
         if "Tags" in df.columns:
             fill_expressions.append(pl.col("Tags").fill_null(pl.lit([])))
-        
+
         if fill_expressions:
             df = df.with_columns(fill_expressions)
-        
+
         return df
 
     def _generate_examples(
-        self, 
+        self,
         downloaded_files: List[str],
         geometry_data: pl.DataFrame,
         contextual_data: pl.DataFrame,
         summary_data: pl.DataFrame,
-        tag_data: pl.DataFrame
+        tag_data: pl.DataFrame,
     ) -> Iterator[Tuple[int, Dict]]:
         """Generate dataset examples with proper typing."""
-        
+
         # Prepare dataframe once
-        df = self._prepare_dataframe(geometry_data, contextual_data, summary_data, tag_data)
-        
+        df = self._prepare_dataframe(
+            geometry_data, contextual_data, summary_data, tag_data
+        )
+
         # Create a dictionary for O(1) lookups
-        metadata_dict = {
-            row["file_id"]: row 
-            for row in df.iter_rows(named=True)
-        }
-        
+        metadata_dict = {row["file_id"]: row for row in df.iter_rows(named=True)}
+
         for idx, file_path in enumerate(downloaded_files):
             if not self._is_file_valid(pathlib.Path(file_path)):
                 continue
-                
+
             file_id = int(pathlib.Path(file_path).stem)
-            
+
             if file_id not in metadata_dict:
                 logger.warning(f"No metadata found for file_id: {file_id}")
                 continue
-                
+
             metadata = metadata_dict[file_id]
 
             # Yield the data, including the filename
@@ -358,9 +393,9 @@ class Thingi10KBuilder(datasets.GeneratorBasedBuilder):
         if not file_path.exists():
             logger.warning(f"File not found: {file_path}")
             return False
-        
+
         if file_path.stat().st_size == 0:
             logger.warning(f"Empty file: {file_path}")
             return False
-        
+
         return True
