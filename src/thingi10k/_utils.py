@@ -339,7 +339,7 @@ def init(
             download_config.cache_dir = cache_dir
         download_config.force_download = force_redownload
 
-        builder = Thingi10KBuilder(config=variant)
+        builder = Thingi10KBuilder(config_name=variant)
         builder.download_and_prepare(download_config=download_config)
         _dataset = builder.as_dataset()
 

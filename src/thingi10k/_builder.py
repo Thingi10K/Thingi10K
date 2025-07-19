@@ -163,7 +163,7 @@ class Thingi10KBuilder(datasets.GeneratorBasedBuilder):
         csv_files = self._download_metadata_files(dl_manager)
         dataframes = self._load_and_process_csv_files(csv_files)
         downloaded_files = self._prepare_dataset_files(
-            dl_manager, dataframes["geometry"], dataframes["summary"]
+            dl_manager, dataframes["geometry_data"], dataframes["summary_data"]
         )
 
         return [
@@ -202,7 +202,7 @@ class Thingi10KBuilder(datasets.GeneratorBasedBuilder):
         for file_type, file_path in csv_files.items():
             if file_type == "geometry_data":
                 schema = DatasetConfig.GEOMETRY_SCHEMA
-                dataframes["geometry"] = pl.read_csv(
+                dataframes["geometry_data"] = pl.read_csv(
                     file_path, schema_overrides=schema, ignore_errors=True
                 )
             elif file_type == "contextual_data":
@@ -215,7 +215,7 @@ class Thingi10KBuilder(datasets.GeneratorBasedBuilder):
                     "Author": pl.String,
                     "License": pl.String,
                 }
-                dataframes["contextual"] = pl.read_csv(
+                dataframes["contextual_data"] = pl.read_csv(
                     file_path, schema_overrides=schema, ignore_errors=True
                 )
             elif file_type == "input_summary":
@@ -223,7 +223,7 @@ class Thingi10KBuilder(datasets.GeneratorBasedBuilder):
                     "ID": pl.Int32,
                     "Thing ID": pl.Int32,
                 }
-                dataframes["summary"] = pl.read_csv(
+                dataframes["summary_data"] = pl.read_csv(
                     file_path, schema_overrides=schema, ignore_errors=True
                 )
             elif file_type == "tag_data":
@@ -231,7 +231,7 @@ class Thingi10KBuilder(datasets.GeneratorBasedBuilder):
                     "Thing ID": pl.Int32,
                     "Tag": pl.String,
                 }
-                dataframes["tag"] = pl.read_csv(
+                dataframes["tag_data"] = pl.read_csv(
                     file_path, schema_overrides=schema, ignore_errors=True
                 )
         return dataframes
