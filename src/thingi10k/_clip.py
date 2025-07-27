@@ -95,7 +95,7 @@ class ClipFeatures:
 
         :raises Exception: If feature download or loading fails
         """
-        logger.info("Downloading CLIP features for ThingI10K dataset.")
+        logger.info("Downloading CLIP features for Thingi10K dataset.")
         REPO_URL = DatasetConfig.REPO_URL
 
         # Configure download manager with force redownload option
