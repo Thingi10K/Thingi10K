@@ -1,3 +1,16 @@
+"""
+CLIP-based feature extraction and similarity search for the Thingi10K dataset.
+
+This module provides functionality to use CLIP (Contrastive Language-Image Pre-training)
+models for searching 3D models in the Thingi10K dataset based on text queries.
+It handles downloading pre-computed CLIP features and provides an interface for
+semantic search of 3D models.
+
+.. note::
+    This module requires additional dependencies (torch, open_clip) that can be
+    installed with: ``pip install thingi10k[clip]``
+"""
+
 try:
     import torch
     import open_clip
@@ -13,7 +26,35 @@ from ._logging import logger
 
 
 class ClipFeatures:
+    """
+    CLIP-based feature extractor and similarity search for 3D models.
+
+    This class provides functionality to search for 3D models in the Thingi10K dataset
+    using natural language queries. It downloads pre-computed CLIP features and uses
+    a CLIP model to encode text queries for similarity matching.
+
+    :param model_name: Name of the CLIP model to use for text encoding
+    :type model_name: str
+
+    .. note::
+        Requires torch and open_clip to be installed. Install with:
+        ``pip install thingi10k[clip]``
+
+    Example:
+        >>> clip_features = ClipFeatures("ViT-B-32-quickgelu")
+        >>> results = clip_features.query("car wheel", threshold=0.1)
+        >>> print(f"Found {len(results)} matching models")
+    """
+
     def __init__(self, model_name="ViT-B-32-quickgelu"):
+        """
+        Initialize the CLIP features extractor.
+
+        :param model_name: Name of the CLIP model to use for encoding text queries.
+                          Must match one of the available pre-computed feature sets.
+        :type model_name: str
+        :raises AssertionError: If CLIP dependencies are not available
+        """
         if not with_clip:
             return
 
@@ -23,6 +64,14 @@ class ClipFeatures:
         logger.info("CLIP features initialized successfully.")
 
     def __initialize_model(self):
+        """
+        Initialize the CLIP model and tokenizer.
+
+        Downloads and loads the specified CLIP model with pre-trained weights
+        from LAION-400M dataset. Also initializes the corresponding tokenizer.
+
+        :raises Exception: If model initialization fails
+        """
         logger.info(f"Initializing CLIP model: {self.model_name}")
         self.model, _, _ = open_clip.create_model_and_transforms(
             self.model_name, pretrained="laion400m_e32"
@@ -31,6 +80,15 @@ class ClipFeatures:
         self.tokenizer = open_clip.get_tokenizer(self.model_name)
 
     def __initialize_features(self):
+        """
+        Download and load pre-computed CLIP features for the Thingi10K dataset.
+
+        Downloads the pre-computed image features for all models in the dataset,
+        loads them into memory, and normalizes them for similarity computation.
+        Also loads the corresponding file IDs for mapping results back to models.
+
+        :raises Exception: If feature download or loading fails
+        """
         logger.info("Downloading CLIP features for ThingI10K dataset.")
         REPO_URL = DatasetConfig.REPO_URL
 
@@ -49,13 +107,26 @@ class ClipFeatures:
             self.features /= self.features.norm(dim=-1, keepdim=True)
 
     def query(self, query_text: str, threshold: float = 0.01):
-        """Search for models in the dataset that match the query text using CLIP model.
+        """
+        Search for models in the dataset that match the query text using CLIP model.
 
-        @param query_text: The text query to search for in the dataset.
-        @param threshold:  The cutoff threshold within [0, 1] for matches. 0 will match everthing,
-                           and 1 matches nothing. Default is 0.01.
+        Encodes the input text query using the CLIP model and computes similarity
+        scores with all pre-computed image features in the dataset. Returns file IDs
+        of models that exceed the specified similarity threshold.
 
-        @return:          The file IDs of the models that match the query text.
+        :param query_text: The text query to search for in the dataset
+        :type query_text: str
+        :param threshold: The cutoff threshold within [0, 1] for matches.
+                         0 will match everything, 1 matches nothing.
+        :type threshold: float
+        :return: Tensor containing file IDs of models that match the query text
+        :rtype: torch.Tensor
+        :raises AssertionError: If CLIP model is not available
+
+        Example:
+            >>> clip_features = ClipFeatures()
+            >>> results = clip_features.query("red sports car", threshold=0.1)
+            >>> print(f"Found {len(results)} matching car models")
         """
         assert (
             with_clip

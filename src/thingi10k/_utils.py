@@ -157,12 +157,13 @@ class DatasetFilters:
         d = dataset
 
         # Common conditions for genus calculation
-        base_conditions = lambda x: (
-            x["num_components"] == 1
-            and x["num_boundary_edges"] == 0
-            and x["vertex_manifold"]
-            and x["euler"] % 2 == 0
-        )
+        def base_conditions(x):
+            return (
+                x["num_components"] == 1
+                and x["num_boundary_edges"] == 0
+                and x["vertex_manifold"]
+                and x["euler"] % 2 == 0
+            )
 
         if min_genus is not None:
             d = d.filter(
