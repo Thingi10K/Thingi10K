@@ -46,20 +46,22 @@ class ClipFeatures:
         >>> print(f"Found {len(results)} matching models")
     """
 
-    def __init__(self, model_name="ViT-B-32-quickgelu"):
+    def __init__(self, model_name="ViT-B-32-quickgelu", force_redownload=False):
         """
         Initialize the CLIP features extractor.
 
         :param model_name: Name of the CLIP model to use for encoding text queries.
                           Must match one of the available pre-computed feature sets.
         :type model_name: str
+        :param force_redownload: Whether to force redownload of features even if they exist locally.
+        :type force_redownload: bool
         :raises AssertionError: If CLIP dependencies are not available
         """
         if not with_clip:
             return
 
         self.model_name = model_name
-        self.__initialize_features()
+        self.__initialize_features(force_redownload)
         self.__initialize_model()
         logger.info("CLIP features initialized successfully.")
 
@@ -79,12 +81,16 @@ class ClipFeatures:
 
         self.tokenizer = open_clip.get_tokenizer(self.model_name)
 
-    def __initialize_features(self):
+    def __initialize_features(self, force_redownload: bool):
         """
         Download and load pre-computed CLIP features for the Thingi10K dataset.
 
         Downloads the pre-computed image features for all models in the dataset,
         loads them into memory, and normalizes them for similarity computation.
+
+        :param force_redownload: Whether to force redownload of features even if they exist locally.
+        :type force_redownload: bool
+
         Also loads the corresponding file IDs for mapping results back to models.
 
         :raises Exception: If feature download or loading fails
@@ -92,7 +98,12 @@ class ClipFeatures:
         logger.info("Downloading CLIP features for ThingI10K dataset.")
         REPO_URL = DatasetConfig.REPO_URL
 
-        dl_manager = datasets.DownloadManager()
+        # Configure download manager with force redownload option
+        download_config = None
+        if force_redownload:
+            download_config = datasets.DownloadConfig(force_download=True)
+
+        dl_manager = datasets.DownloadManager(download_config=download_config)
         url = f"{REPO_URL}/clip_features/{self.model_name}.tar.gz"
         self.features_path = pathlib.Path(dl_manager.download_and_extract(url))
 
@@ -117,7 +128,7 @@ class ClipFeatures:
         :param query_text: The text query to search for in the dataset
         :type query_text: str
         :param threshold: The cutoff threshold within [0, 1] for matches.
-                         0 will match everything, 1 matches nothing.
+                          0 will match everything, 1 matches nothing.
         :type threshold: float
         :return: Tensor containing file IDs of models that match the query text
         :rtype: torch.Tensor
@@ -125,8 +136,8 @@ class ClipFeatures:
 
         Example:
             >>> clip_features = ClipFeatures()
-            >>> results = clip_features.query("red sports car", threshold=0.1)
-            >>> print(f"Found {len(results)} matching car models")
+            >>> results = clip_features.query("A perfect sphere", threshold=0.1)
+            >>> print(f"Found {len(results)} models matching the query")
         """
         assert (
             with_clip
