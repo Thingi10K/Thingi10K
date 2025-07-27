@@ -8,7 +8,7 @@ different colors for different log levels (DEBUG/INFO: grey, WARNING: yellow,
 ERROR: red, CRITICAL: bright red).
 """
 import logging
-import colorama
+import colorama # type: ignore[import]
 import platform
 
 if platform.system() == "Windows":

@@ -27,9 +27,9 @@ class DatasetFilters:
     @staticmethod
     def _normalize_to_list(value: Union[FilterValueType, ArrayLikeType]) -> list:
         """Convert single values or array-like to list."""
-        if isinstance(value, (int, str)):
+        if isinstance(value, (int, str, bool)):
             return [value]
-        return list(value) if value is not None else []
+        return list(value) if value is not None else []  # type: ignore[arg-type]
 
     @staticmethod
     def _normalize_range(value: RangeType) -> tuple[int | None, int | None]:
@@ -315,11 +315,15 @@ def load_file(
             with np.load(file_path) as data:
                 if "vertices" not in data or "facets" not in data:
                     raise ValueError(f"NPZ file missing required arrays: {file_path}")
-                return data["vertices"], data["facets"]
+                vertices = np.asarray(data["vertices"], dtype=np.floating)
+                facets = np.asarray(data["facets"], dtype=np.integer)
+                return vertices, facets
         else:
             # Load raw mesh file with lagrange
             mesh = lagrange.io.load_mesh(file_path)
-            return mesh.vertices, mesh.facets
+            vertices = np.asarray(mesh.vertices, dtype=np.floating)
+            facets = np.asarray(mesh.facets, dtype=np.integer)
+            return vertices, facets
     except Exception as e:
         raise ValueError(f"Failed to load mesh file {file_path}: {e}") from e
 

@@ -13,14 +13,14 @@ semantic search of 3D models.
 
 try:
     import torch
-    import open_clip
+    import open_clip # type: ignore[import-untyped]
     from ._builder import DatasetConfig
 
     with_clip = True
 except ImportError as e:
     with_clip = False
 
-import datasets
+import datasets # type: ignore[import-untyped]
 import pathlib
 from ._logging import logger
 
