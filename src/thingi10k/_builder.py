@@ -2,14 +2,11 @@
 
 import datasets  # type: ignore
 import datetime
-import logging
 import numpy as np
 import pathlib
 import polars as pl
 from typing import Any, Dict, List, Iterator, Tuple
-
-# Set up logger
-logger = logging.getLogger(__name__)
+from ._logging import logger
 
 
 _CITATION = """\

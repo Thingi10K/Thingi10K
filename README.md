@@ -2,10 +2,10 @@
 
 ![Thingi10K Poster](https://user-images.githubusercontent.com/3606672/65047743-fa269180-d930-11e9-8013-134764b150c1.png)
 
-Thingi10K is a large scale 3D dataset created to study the variety, complexity and quality of
-real-world 3D printing models. We analyze every mesh of all things featured on
+Thingi10K is a large-scale 3D dataset created to study the variety, complexity and quality of
+real-world 3D printing models. We analyzed every mesh of all things featured on
 [Thingiverse.com](https://www.thingiverse.com/)
-between Sept. 16, 2009 and Nov. 15, 2015. On this site, we hope to share our findings with you.
+between Sept. 16, 2009 and Nov. 15, 2015. In this repository, we share our findings with you.
 
 In a nutshell, Thingi10K contains...
 
@@ -27,7 +27,7 @@ In a nutshell, Thingi10K contains...
 * 11% topologically open
 * 10% non-oriented
 
-Thingi10K is created by [Qingnan Zhou](https://research.adobe.com/person/qingnan-zhou/) and [Alec
+Thingi10K is curated by [Qingnan Zhou](https://research.adobe.com/person/qingnan-zhou/) and [Alec
 Jacobson](http://www.cs.toronto.edu/~jacobson/).
 
 ## Raw dataset
@@ -111,6 +111,41 @@ for entry in thingi10k.dataset(num_components=1, self_intersecting=False, solid=
 
 Please see `help(thingi10k.dataset)` for all available filtering options.
 
+### Semantic search using CLIP
+
+Thingi10K supports semantic search using [open-clip
+models](https://github.com/mlfoundations/open_clip), allowing one to find 3D models using natural
+language queries. Please note this a beta feature, and the results may not be perfect.
+
+#### Installation
+
+To use semantic search, you need to install the optional CLIP dependencies:
+
+```sh
+pip install 'thingi10k[clip]'
+```
+
+Quotes are used to avoid shell expansion of the square brackets. This installs the required
+`open_clip` and its dependencies.
+
+#### Basic usage
+
+The semantic search functionality is integrated with the main `dataset()` function through the
+`query` parameter:
+
+```py
+import thingi10k
+
+thingi10k.init()
+
+# Find models that look like cars
+for entry in thingi10k.dataset(query="A cute monster"):
+    vertices, facets = thingi10k.load_file(entry['file_path'])
+```
+
+Note that semantic query can be combined with any other filtering options.
+
+
 ### Dataset variants
 
 Thingi10K provides two variants of the dataset: `npz` and `raw`.
@@ -131,7 +166,7 @@ thingi10k.init(variant='raw')
 By default, `thingi10k.init()` will cache the dataset in a local directory.
 Any subsequent calls to `thingi10k.init()` will use the cached dataset and incur no additional
 download cost.
-The cache directory can be explicitly specified by user:
+The cache directory can be explicitly specified by the user:
 
 ```py
 thingi10k.init(cache_dir="path/to/.thingi10k")
@@ -147,12 +182,12 @@ thingi10k.init(force_redownload=True)
 ## License
 
 The source code for organizing and filtering the Thingi10K dataset is licensed under the Apache
-License, Version 2.0. Each "thing" in the dataset is licensed under different licenses. Please refer
+License, Version 2.0. Each "thing" in the dataset has its own license. Please refer
 to the `license` field associated with each entry in the dataset.
 
 ## Errata
 
-The following models are known to be "corrupt." However, we decide to still include them in our
+The following models are known to be "corrupt." However, we decided to still include them in our
 dataset in order to faithfully reflect mesh qualities on Thingiverse.
 
 * Model 49911 is truncated (ASCII STL).
@@ -168,7 +203,7 @@ This project is funded in part by NSF grants CMMI-11-29917, IIS-14-09286, and II
 
 We thank Marcel Campen, Chelsea Tymms, and Julian Panetta for early feedback and proofreading. We
 also thank Neil Dickson for pointing out corrupt models, and Nick Sharp for pointing out bugs in
-download script. Lastly, we thank Silvia Sellán and Yun-Chun Chen for discussion and suggestion on
+the download script. Lastly, we thank Silvia Sellán and Yun-Chun Chen for discussions and suggestions on
 hosting the dataset.
 
 ## Cite us

@@ -7,12 +7,13 @@ import lagrange
 import logging
 from typing import Literal, Union, Any, Sequence
 from ._builder import Thingi10KBuilder
+from ._clip import with_clip, ClipFeatures
+from ._logging import logger
 
-# Set up logger
-logger = logging.getLogger(__name__)
 
 root = Path(__file__).parent
 _dataset = None
+_clip_features: ClipFeatures | None = None
 
 # Type aliases for better readability
 FilterValueType = Union[int, str, bool, None]
@@ -26,9 +27,9 @@ class DatasetFilters:
     @staticmethod
     def _normalize_to_list(value: Union[FilterValueType, ArrayLikeType]) -> list:
         """Convert single values or array-like to list."""
-        if isinstance(value, (int, str)):
+        if isinstance(value, (int, str, bool)):
             return [value]
-        return list(value) if value is not None else []
+        return list(value) if value is not None else []  # type: ignore[arg-type]
 
     @staticmethod
     def _normalize_range(value: RangeType) -> tuple[int | None, int | None]:
@@ -156,12 +157,13 @@ class DatasetFilters:
         d = dataset
 
         # Common conditions for genus calculation
-        base_conditions = lambda x: (
-            x["num_components"] == 1
-            and x["num_boundary_edges"] == 0
-            and x["vertex_manifold"]
-            and x["euler"] % 2 == 0
-        )
+        def base_conditions(x):
+            return (
+                x["num_components"] == 1
+                and x["num_boundary_edges"] == 0
+                and x["vertex_manifold"]
+                and x["euler"] % 2 == 0
+            )
 
         if min_genus is not None:
             d = d.filter(
@@ -198,6 +200,7 @@ def dataset(
     solid: bool | None = None,
     euler: int | None | tuple[int | None, int | None] = None,
     genus: int | None | tuple[int | None, int | None] = None,
+    query: str | None = None,
 ) -> datasets.Dataset:
     """Get the (filtered) dataset.
 
@@ -235,6 +238,8 @@ def dataset(
     :param genus:        Filter by the genus. If a tuple is provided, it is interpreted as a range.
                          If any of the lower or upper bound is None, it is not considered in the
                          filter.
+    :param query:        A free-form text query to search for in the dataset. This feature requires
+                         CLIP model to be enabled.
 
     :returns: The filtered dataset.
 
@@ -278,6 +283,12 @@ def dataset(
     d = DatasetFilters.apply_range_filters(d, **filter_args)
     d = DatasetFilters.apply_genus_filter(d, genus)
 
+    if query is not None:
+        assert with_clip, "CLIP model is not available. Please `pip install thingi10k[clip]`."
+        assert _clip_features is not None, "CLIP features are not initialized."
+        selected_file_ids = _clip_features.query(query)
+        d = d.filter(lambda x: x["file_id"] in selected_file_ids)
+
     logger.info(f"Filtered dataset from {len(_dataset['train'])} to {len(d)} entries")
     return d
 
@@ -304,11 +315,15 @@ def load_file(
             with np.load(file_path) as data:
                 if "vertices" not in data or "facets" not in data:
                     raise ValueError(f"NPZ file missing required arrays: {file_path}")
-                return data["vertices"], data["facets"]
+                vertices = np.asarray(data["vertices"], dtype=np.floating)
+                facets = np.asarray(data["facets"], dtype=np.integer)
+                return vertices, facets
         else:
             # Load raw mesh file with lagrange
             mesh = lagrange.io.load_mesh(file_path)
-            return mesh.vertices, mesh.facets
+            vertices = np.asarray(mesh.vertices, dtype=np.floating)
+            facets = np.asarray(mesh.facets, dtype=np.integer)
+            return vertices, facets
     except Exception as e:
         raise ValueError(f"Failed to load mesh file {file_path}: {e}") from e
 
@@ -328,7 +343,7 @@ def init(
     :raises ValueError: If variant is not supported.
     :raises RuntimeError: If dataset initialization fails.
     """
-    global _dataset
+    global _dataset, _clip_features
 
     if variant is not None and variant not in ["npz", "raw"]:
         raise ValueError(f"Unsupported variant: {variant}. Must be 'npz' or 'raw'.")
@@ -346,5 +361,9 @@ def init(
         logger.info(
             f"Dataset initialized with {len(_dataset['train'])} entries using variant '{variant or 'npz'}'"
         )
+
+        if with_clip:
+            _clip_features = ClipFeatures()
+
     except Exception as e:
         raise RuntimeError(f"Failed to initialize dataset: {e}") from e
