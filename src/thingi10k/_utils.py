@@ -7,12 +7,13 @@ import lagrange
 import logging
 from typing import Literal, Union, Any, Sequence
 from ._builder import Thingi10KBuilder
+from ._clip import with_clip, ClipFeatures
+from ._logging import logger
 
-# Set up logger
-logger = logging.getLogger(__name__)
 
 root = Path(__file__).parent
 _dataset = None
+_clip_features: ClipFeatures | None = None
 
 # Type aliases for better readability
 FilterValueType = Union[int, str, bool, None]
@@ -198,6 +199,7 @@ def dataset(
     solid: bool | None = None,
     euler: int | None | tuple[int | None, int | None] = None,
     genus: int | None | tuple[int | None, int | None] = None,
+    query: str | None = None,
 ) -> datasets.Dataset:
     """Get the (filtered) dataset.
 
@@ -235,6 +237,8 @@ def dataset(
     :param genus:        Filter by the genus. If a tuple is provided, it is interpreted as a range.
                          If any of the lower or upper bound is None, it is not considered in the
                          filter.
+    :param query:        A free-form text query to search for in the dataset. This feature requires
+                         CLIP model to be enabled.
 
     :returns: The filtered dataset.
 
@@ -277,6 +281,12 @@ def dataset(
     d = DatasetFilters.apply_regex_filters(d, **filter_args)
     d = DatasetFilters.apply_range_filters(d, **filter_args)
     d = DatasetFilters.apply_genus_filter(d, genus)
+
+    if query is not None:
+        assert with_clip, "CLIP model is not available. Please `pip install thingi10k[clip]`."
+        assert _clip_features is not None, "CLIP features are not initialized."
+        selected_file_ids = _clip_features.query(query)
+        d = d.filter(lambda x: x["file_id"] in selected_file_ids)
 
     logger.info(f"Filtered dataset from {len(_dataset['train'])} to {len(d)} entries")
     return d
@@ -328,7 +338,7 @@ def init(
     :raises ValueError: If variant is not supported.
     :raises RuntimeError: If dataset initialization fails.
     """
-    global _dataset
+    global _dataset, _clip_features
 
     if variant is not None and variant not in ["npz", "raw"]:
         raise ValueError(f"Unsupported variant: {variant}. Must be 'npz' or 'raw'.")
@@ -346,5 +356,9 @@ def init(
         logger.info(
             f"Dataset initialized with {len(_dataset['train'])} entries using variant '{variant or 'npz'}'"
         )
+
+        if with_clip:
+            _clip_features = ClipFeatures()
+
     except Exception as e:
         raise RuntimeError(f"Failed to initialize dataset: {e}") from e

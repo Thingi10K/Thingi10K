@@ -79,3 +79,4 @@ from ._utils import (
     init,
     dataset,
 )
+from ._logging import logger
