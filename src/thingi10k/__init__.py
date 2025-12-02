@@ -8,7 +8,7 @@ This package provides a Python interface to the Thingi10k dataset, a collection 
 * **Parallel download** with caching support
 * **Easy access** to 3D geometry from the Thingi10k dataset
 * **Advanced filtering** based on geometric and contextual properties
-* **Multiple variants** of the dataset (npz, raw)
+* **Multiple variants** of the dataset (npz, raw, tetwild)
 * **Semantic search** using CLIP model (optional)
 
 ## Quick Start
@@ -91,7 +91,7 @@ Combine multiple filters:
 
 ## Dataset Variants
 
-Two variants are available:
+Three variants are available:
 
 **NPZ variant (default):** Pre-extracted geometry in NumPy format - faster download and loading:
 
@@ -100,6 +100,10 @@ Two variants are available:
 **Raw variant:** Original mesh files (STL, OBJ, etc.) - slower but preserves original format:
 
     >>> thingi10k.init(variant='raw')
+
+**TetWild variant:** Surface meshes remeshed using TetWild - high-quality triangle meshes in NumPy format:
+
+    >>> thingi10k.init(variant='tetwild')
 
 ## Caching
 

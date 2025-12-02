@@ -148,17 +148,25 @@ Note that semantic query can be combined with any other filtering options.
 
 ### Dataset variants
 
-Thingi10K provides two variants of the dataset: `npz` and `raw`.
+Thingi10K provides three variants of the dataset: `npz`, `raw`, and `tetwild`.
 
 * `npz` variant contains the geometry (vertex and facet arrays) in NumPy arrays. It is faster to
 download and no mesh parsing is necessary.
 * `raw` variant contains the raw mesh files (STL, OBJ, etc.) in their original format. It is slower
 to download and requires parsing to extract geometric data.
+* `tetwild` variant contains the surface meshes remeshed using [TetWild](https://github.com/Yixin-Hu/TetWild). 
+These are high-quality triangle meshes and stored in NumPy arrays.
 
 By default, `thingi10k.init()` will download the `npz` variant. To download the `raw` variant:
 
 ```py
 thingi10k.init(variant='raw')
+```
+
+To download the `tetwild` variant:
+
+```py
+thingi10k.init(variant='tetwild')
 ```
 
 ### Caching the dataset
