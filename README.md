@@ -115,7 +115,7 @@ Please see `help(thingi10k.dataset)` for all available filtering options.
 
 Thingi10K supports semantic search using [open-clip
 models](https://github.com/mlfoundations/open_clip), allowing one to find 3D models using natural
-language queries. Please note this a beta feature, and the results may not be perfect.
+language queries. Please note this is a beta feature, and the results may not be perfect.
 
 #### Installation
 
@@ -138,7 +138,7 @@ import thingi10k
 
 thingi10k.init()
 
-# Find models that look like cars
+# Find models that look like cute monsters
 for entry in thingi10k.dataset(query="A cute monster"):
     vertices, facets = thingi10k.load_file(entry['file_path'])
 ```

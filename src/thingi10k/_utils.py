@@ -335,7 +335,7 @@ def init(
 ) -> None:
     """Initialize the dataset.
 
-    :param variant:          The variant of the dataset to load. Options are "npz" and "raw".
+    :param variant:          The variant of the dataset to load. Options are "npz", "raw", and "tetwild".
                              Default is "npz".
     :param cache_dir:        The directory where the dataset is cached.
     :param force_redownload: Whether to force redownload the dataset.

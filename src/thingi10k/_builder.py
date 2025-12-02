@@ -2,7 +2,6 @@
 
 import datasets  # type: ignore
 import datetime
-import numpy as np
 import pathlib
 import polars as pl
 from typing import Any, Dict, List, Iterator, Tuple
@@ -19,7 +18,7 @@ _CITATION = """\
 """
 
 _DESCRIPTION = """\
-Thingi10K is a large scale 3D dataset created to study the variety, complexity and quality of
+Thingi10K is a large-scale 3D dataset created to study the variety, complexity and quality of
 real-world 3D printing models. We analyze every mesh of all things featured on Thingiverse.com
 between Sept. 16, 2009 and Nov. 15, 2015. On this site, we hope to share our findings with you.
 """
@@ -216,7 +215,7 @@ class Thingi10KBuilder(datasets.GeneratorBasedBuilder):
             if file_type == "geometry_data":
                 schema = DatasetConfig.GEOMETRY_SCHEMA
                 df = pl.read_csv(file_path, schema_overrides=schema, ignore_errors=True)
-                if not "self_intersecting" in df.columns:
+                if "self_intersecting" not in df.columns:
                     df = df.with_columns(
                         (pl.col("num_self_intersections") > 0)
                         .cast(pl.Int32)
