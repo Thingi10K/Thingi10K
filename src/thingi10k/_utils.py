@@ -315,8 +315,8 @@ def load_file(
             with np.load(file_path) as data:
                 if "vertices" not in data or "facets" not in data:
                     raise ValueError(f"NPZ file missing required arrays: {file_path}")
-                vertices = np.asarray(data["vertices"], dtype=np.floating)
-                facets = np.asarray(data["facets"], dtype=np.integer)
+                vertices = np.asarray(data["vertices"], dtype=np.float64)
+                facets = np.asarray(data["facets"], dtype=np.int32)
                 return vertices, facets
         else:
             # Load raw mesh file with lagrange
@@ -329,7 +329,7 @@ def load_file(
 
 
 def init(
-    variant: Literal["npz", "raw"] | None = None,
+    variant: Literal["npz", "raw", "tetwild"] | None = None,
     cache_dir: str | None = None,
     force_redownload: bool = False,
 ) -> None:
@@ -345,8 +345,8 @@ def init(
     """
     global _dataset, _clip_features
 
-    if variant is not None and variant not in ["npz", "raw"]:
-        raise ValueError(f"Unsupported variant: {variant}. Must be 'npz' or 'raw'.")
+    if variant is not None and variant not in ["npz", "raw", "tetwild"]:
+        raise ValueError(f"Unsupported variant: {variant}. Must be 'npz', 'raw' or 'tetwild'.")
 
     try:
         download_config = datasets.DownloadConfig()
