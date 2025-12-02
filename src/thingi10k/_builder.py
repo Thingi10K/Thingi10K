@@ -218,7 +218,7 @@ class Thingi10KBuilder(datasets.GeneratorBasedBuilder):
                 if "self_intersecting" not in df.columns:
                     df = df.with_columns(
                         (pl.col("num_self_intersections") > 0)
-                        .cast(pl.Int32)
+                        .cast(pl.Boolean)
                         .alias("self_intersecting")
                     )
                 dataframes["geometry_data"] = df
