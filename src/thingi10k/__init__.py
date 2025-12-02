@@ -135,7 +135,7 @@ Note that semantic search can be combined with other filters.
 
 """
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 
 from ._utils import (
     load_file,
