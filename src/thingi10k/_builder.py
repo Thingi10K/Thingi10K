@@ -2,7 +2,6 @@
 
 import datasets  # type: ignore
 import datetime
-import numpy as np
 import pathlib
 import polars as pl
 from typing import Any, Dict, List, Iterator, Tuple
@@ -19,7 +18,7 @@ _CITATION = """\
 """
 
 _DESCRIPTION = """\
-Thingi10K is a large scale 3D dataset created to study the variety, complexity and quality of
+Thingi10K is a large-scale 3D dataset created to study the variety, complexity and quality of
 real-world 3D printing models. We analyze every mesh of all things featured on Thingiverse.com
 between Sept. 16, 2009 and Nov. 15, 2015. On this site, we hope to share our findings with you.
 """
@@ -108,6 +107,11 @@ class Thingi10KBuilder(datasets.GeneratorBasedBuilder):
             version="1.0.0",
             description="Dataset stored in their original raw mesh format.",
         ),
+        datasets.BuilderConfig(
+            name="tetwild",
+            version="1.0.0",
+            description="Dataset remeshed using TetWild.",
+        ),
     ]
 
     DEFAULT_CONFIG_NAME = (
@@ -174,14 +178,25 @@ class Thingi10KBuilder(datasets.GeneratorBasedBuilder):
         """Download all required CSV metadata files."""
         metadata_url = f"{DatasetConfig.REPO_URL}/metadata"
 
+        file_types = {
+            "contextual_data": f"{metadata_url}/contextual_data.csv",
+            "input_summary": f"{metadata_url}/input_summary.csv",
+            "tag_data": f"{metadata_url}/tag_data.csv",
+        }
+
+        # Geometry data file depends on config
+        match self.config.name:
+            case "raw" | "npz":
+                file_types["geometry_data"] = f"{metadata_url}/geometry_data.csv"
+            case "tetwild":
+                file_types["geometry_data"] = (
+                    f"{metadata_url}/tetwild_geometry_data.csv"
+                )
+            case _:
+                raise ValueError(f"Unknown config name: {self.config.name}")
+
         files = {}
-        for file_type in [
-            "geometry_data",
-            "contextual_data",
-            "input_summary",
-            "tag_data",
-        ]:
-            url = f"{metadata_url}/{file_type}.csv"
+        for file_type, url in file_types.items():
             files[file_type] = dl_manager.download(url)
 
             # Validate file exists
@@ -199,9 +214,14 @@ class Thingi10KBuilder(datasets.GeneratorBasedBuilder):
         for file_type, file_path in csv_files.items():
             if file_type == "geometry_data":
                 schema = DatasetConfig.GEOMETRY_SCHEMA
-                dataframes["geometry_data"] = pl.read_csv(
-                    file_path, schema_overrides=schema, ignore_errors=True
-                )
+                df = pl.read_csv(file_path, schema_overrides=schema, ignore_errors=True)
+                if "self_intersecting" not in df.columns:
+                    df = df.with_columns(
+                        (pl.col("num_self_intersections") > 0)
+                        .cast(pl.Boolean)
+                        .alias("self_intersecting")
+                    )
+                dataframes["geometry_data"] = df
             elif file_type == "contextual_data":
                 schema = {
                     "Thing ID": pl.Int32,
@@ -272,6 +292,20 @@ class Thingi10KBuilder(datasets.GeneratorBasedBuilder):
                 / f"{row[0]}.{row[1].split('.')[-1].lower()}"
                 for row in raw_data.iter_rows()
                 if row[0] not in DatasetConfig.CORRUPT_FILE_IDS
+            ]
+        elif self.config.name == "tetwild":
+            extraction_dir = dl_manager.download_and_extract(
+                f"{repo_url}/Thingi10K_tetwild_npz.tar.gz"
+            )
+            extraction_dir = pathlib.Path(extraction_dir)
+            if not extraction_dir.exists() or not extraction_dir.is_dir():
+                raise FileNotFoundError(
+                    f"Extraction directory not found: {extraction_dir}"
+                )
+            downloaded_files = [
+                extraction_dir / "tetwild" / "10k_surface_npz" / f"{file_id}.npz"
+                for file_id in file_ids
+                if file_id not in DatasetConfig.CORRUPT_FILE_IDS
             ]
         else:
             raise ValueError(f"Unknown config name: {self.config.name}")
@@ -376,7 +410,7 @@ class Thingi10KBuilder(datasets.GeneratorBasedBuilder):
                 "num_components": metadata["num_connected_components"],
                 "num_boundary_edges": metadata["num_boundary_edges"],
                 "closed": metadata["num_boundary_edges"] == 0,
-                "self_intersecting": metadata["num_self_intersections"] > 0,
+                "self_intersecting": metadata["self_intersecting"],
                 "vertex_manifold": metadata["vertex_manifold"] == 1,
                 "edge_manifold": metadata["edge_manifold"] == 1,
                 "oriented": metadata["oriented"] == 1,

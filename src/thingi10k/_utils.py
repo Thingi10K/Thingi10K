@@ -295,7 +295,7 @@ def dataset(
 
 def load_file(
     file_path: str,
-) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.integer]]:
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.int32]]:
     """Load the vertices and facets from a file.
 
     :param file_path: The path to the file.
@@ -315,27 +315,27 @@ def load_file(
             with np.load(file_path) as data:
                 if "vertices" not in data or "facets" not in data:
                     raise ValueError(f"NPZ file missing required arrays: {file_path}")
-                vertices = np.asarray(data["vertices"], dtype=np.floating)
-                facets = np.asarray(data["facets"], dtype=np.integer)
+                vertices = np.asarray(data["vertices"], dtype=np.float64)
+                facets = np.asarray(data["facets"], dtype=np.int32)
                 return vertices, facets
         else:
             # Load raw mesh file with lagrange
             mesh = lagrange.io.load_mesh(file_path)
-            vertices = np.asarray(mesh.vertices, dtype=np.floating)
-            facets = np.asarray(mesh.facets, dtype=np.integer)
+            vertices = np.asarray(mesh.vertices, dtype=np.float64)
+            facets = np.asarray(mesh.facets, dtype=np.int32)
             return vertices, facets
     except Exception as e:
         raise ValueError(f"Failed to load mesh file {file_path}: {e}") from e
 
 
 def init(
-    variant: Literal["npz", "raw"] | None = None,
+    variant: Literal["npz", "raw", "tetwild"] | None = None,
     cache_dir: str | None = None,
     force_redownload: bool = False,
 ) -> None:
     """Initialize the dataset.
 
-    :param variant:          The variant of the dataset to load. Options are "npz" and "raw".
+    :param variant:          The variant of the dataset to load. Options are "npz", "raw", and "tetwild".
                              Default is "npz".
     :param cache_dir:        The directory where the dataset is cached.
     :param force_redownload: Whether to force redownload the dataset.
@@ -345,8 +345,8 @@ def init(
     """
     global _dataset, _clip_features
 
-    if variant is not None and variant not in ["npz", "raw"]:
-        raise ValueError(f"Unsupported variant: {variant}. Must be 'npz' or 'raw'.")
+    if variant is not None and variant not in ["npz", "raw", "tetwild"]:
+        raise ValueError(f"Unsupported variant: {variant}. Must be 'npz', 'raw', or 'tetwild'.")
 
     try:
         download_config = datasets.DownloadConfig()
