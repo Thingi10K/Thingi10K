@@ -190,7 +190,9 @@ class Thingi10KBuilder(datasets.GeneratorBasedBuilder):
             case "raw" | "npz":
                 file_types["geometry_data"] = f"{metadata_url}/geometry_data.csv"
             case "tetwild":
-                file_types["geometry_data"] = f"{metadata_url}/tetwild_geometry_data.csv"
+                file_types["geometry_data"] = (
+                    f"{metadata_url}/tetwild_geometry_data.csv"
+                )
             case _:
                 raise ValueError(f"Unknown config name: {self.config.name}")
 
@@ -215,7 +217,11 @@ class Thingi10KBuilder(datasets.GeneratorBasedBuilder):
                 schema = DatasetConfig.GEOMETRY_SCHEMA
                 df = pl.read_csv(file_path, schema_overrides=schema, ignore_errors=True)
                 if not "self_intersecting" in df.columns:
-                    df.with_columns((pl.col("num_self_intersections") > 0).cast(pl.Int32).alias("self_intersecting"))
+                    df = df.with_columns(
+                        (pl.col("num_self_intersections") > 0)
+                        .cast(pl.Int32)
+                        .alias("self_intersecting")
+                    )
                 dataframes["geometry_data"] = df
             elif file_type == "contextual_data":
                 schema = {
