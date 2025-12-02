@@ -346,7 +346,7 @@ def init(
     global _dataset, _clip_features
 
     if variant is not None and variant not in ["npz", "raw", "tetwild"]:
-        raise ValueError(f"Unsupported variant: {variant}. Must be 'npz', 'raw' or 'tetwild'.")
+        raise ValueError(f"Unsupported variant: {variant}. Must be 'npz', 'raw', or 'tetwild'.")
 
     try:
         download_config = datasets.DownloadConfig()
