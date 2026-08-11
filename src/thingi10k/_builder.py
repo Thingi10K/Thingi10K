@@ -2,8 +2,11 @@
 
 import datasets  # type: ignore
 import datetime
+import os
 import pathlib
 import polars as pl
+import shutil
+import tarfile
 from typing import Any, Dict, List, Iterator, Tuple
 from ._logging import logger
 
@@ -90,6 +93,69 @@ class DatasetConfig:
     # Default date for missing values
     DEFAULT_DATE = datetime.datetime(1900, 1, 1)
 
+    # Single-file archive for the npz variant.
+    NPZ_ARCHIVE_NAME = "Thingi10K_npz.tar.gz"
+
+
+def _npz_extract_dir(download_config) -> pathlib.Path:
+    """Stable directory the npz archive is extracted into."""
+    cache_dir = getattr(download_config, "cache_dir", None)
+    base = (
+        pathlib.Path(cache_dir)
+        if cache_dir
+        else pathlib.Path(datasets.config.HF_DATASETS_CACHE)
+    )
+    return base / "thingi10k_npz_extracted"
+
+
+def ensure_npz_dataset(dl_manager) -> pathlib.Path:
+    """Ensure the npz meshes are extracted locally and return their directory.
+
+    Downloads the single ``Thingi10K_npz.tar.gz`` archive (one request, so it
+    avoids the per-file rate limits of fetching ~10k individual files),
+    extracts it, and deletes the archive so only the extracted ``.npz`` files
+    remain on disk. This keeps steady-state disk usage at 1x instead of keeping
+    both the archive and its unpacked copy.
+
+    Idempotent and safe to call on every ``init()``: presence is checked here
+    (not only when the datasets Arrow cache is built), so a cleared extraction
+    is repaired on the next call, and a deleted archive on its own never
+    triggers a re-download -- only genuinely missing meshes do.
+
+    :param dl_manager: A datasets download manager (used to fetch the archive).
+    :returns: Directory containing the ``npz`` folder of extracted meshes.
+    """
+    download_config = getattr(dl_manager, "download_config", None)
+    force_download = getattr(download_config, "force_download", False)
+    extract_dir = _npz_extract_dir(download_config)
+    npz_dir = extract_dir / "npz"
+
+    if force_download and extract_dir.exists():
+        shutil.rmtree(extract_dir)
+
+    # Re-extract only when the meshes are actually missing; a deleted archive
+    # alone must not force a multi-GB re-download.
+    if not (npz_dir.is_dir() and any(npz_dir.iterdir())):
+        archive = dl_manager.download(
+            f"{DatasetConfig.REPO_URL}/{DatasetConfig.NPZ_ARCHIVE_NAME}"
+        )
+        extract_dir.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(archive, "r:gz") as tf:
+            try:
+                tf.extractall(extract_dir, filter="data")
+            except TypeError:
+                # Python < 3.12 has no extraction filter; the archive is ours.
+                tf.extractall(extract_dir)
+        # Reclaim the archive space -- the extracted meshes are what we keep.
+        try:
+            os.remove(archive)
+        except OSError:
+            logger.warning(f"Could not remove npz archive after extraction: {archive}")
+
+    if not npz_dir.is_dir():
+        raise FileNotFoundError(f"npz directory not found after extraction: {npz_dir}")
+    return extract_dir
+
 
 class Thingi10KBuilder(datasets.GeneratorBasedBuilder):
     """
@@ -99,7 +165,7 @@ class Thingi10KBuilder(datasets.GeneratorBasedBuilder):
     BUILDER_CONFIGS = [
         datasets.BuilderConfig(
             name="npz",
-            version="1.0.0",
+            version="1.2.0",
             description="Dataset stored in .npz format.",
         ),
         datasets.BuilderConfig(
@@ -262,14 +328,9 @@ class Thingi10KBuilder(datasets.GeneratorBasedBuilder):
         file_ids = geometry_data["file_id"]
 
         if self.config.name == "npz":
-            extraction_dir = dl_manager.download_and_extract(
-                f"{repo_url}/Thingi10K_npz.tar.gz"
-            )
-            extraction_dir = pathlib.Path(extraction_dir)
-            if not extraction_dir.exists() or not extraction_dir.is_dir():
-                raise FileNotFoundError(
-                    f"Extraction directory not found: {extraction_dir}"
-                )
+            # Download the single npz archive, extract it, and delete the
+            # archive so only the unpacked meshes stay on disk (1x, not 2x).
+            extraction_dir = ensure_npz_dataset(dl_manager)
             downloaded_files = [
                 extraction_dir / "npz" / f"{file_id}.npz"
                 for file_id in file_ids
