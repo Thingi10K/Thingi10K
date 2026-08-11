@@ -11,6 +11,7 @@ classifiers = ["License :: OSI Approved :: Apache Software License"]
 dynamic = ["description", "version"]
 dependencies=[
     "datasets>=4.0",
+    "filelock>=3.0",
     "numpy>=1.22",
     "polars>=1.0",
     "lagrange-open>=6.29.0",

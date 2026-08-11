@@ -7,6 +7,7 @@ import pathlib
 import polars as pl
 import shutil
 import tarfile
+from filelock import FileLock
 from typing import Any, Dict, List, Iterator, Tuple
 from ._logging import logger
 
@@ -108,6 +109,26 @@ def _npz_extract_dir(download_config) -> pathlib.Path:
     return base / "thingi10k_npz_extracted"
 
 
+def _extract_npz_archive(archive: str, extract_dir: pathlib.Path) -> None:
+    """Extract the npz tar.gz into ``extract_dir``, safely on any Python."""
+    with tarfile.open(archive, "r:gz") as tf:
+        try:
+            # Python 3.12+ (and 3.10.12+/3.11.4+ backports): the 'data' filter
+            # blocks path traversal, absolute paths, and links.
+            tf.extractall(extract_dir, filter="data")
+        except TypeError:
+            # Older Pythons lack the extraction filter; validate members
+            # ourselves before trusting the archive.
+            dest = extract_dir.resolve()
+            for member in tf.getmembers():
+                target = (dest / member.name).resolve()
+                if target != dest and dest not in target.parents:
+                    raise ValueError(f"Unsafe path in npz archive: {member.name!r}")
+                if member.issym() or member.islnk():
+                    raise ValueError(f"Unsafe link in npz archive: {member.name!r}")
+            tf.extractall(extract_dir)
+
+
 def ensure_npz_dataset(dl_manager) -> pathlib.Path:
     """Ensure the npz meshes are extracted locally and return their directory.
 
@@ -117,10 +138,12 @@ def ensure_npz_dataset(dl_manager) -> pathlib.Path:
     remain on disk. This keeps steady-state disk usage at 1x instead of keeping
     both the archive and its unpacked copy.
 
-    Idempotent and safe to call on every ``init()``: presence is checked here
-    (not only when the datasets Arrow cache is built), so a cleared extraction
-    is repaired on the next call, and a deleted archive on its own never
-    triggers a re-download -- only genuinely missing meshes do.
+    Idempotent and safe to call on every ``init()``: completion is tracked by a
+    ``.complete`` marker written only after a successful extraction, so an
+    interrupted extract is retried rather than mistaken for a finished one, and
+    a deleted archive on its own never triggers a re-download. A file lock
+    serializes concurrent callers (e.g. multi-worker data loaders) so only one
+    process performs the (re)extraction.
 
     :param dl_manager: A datasets download manager (used to fetch the archive).
     :returns: Directory containing the ``npz`` folder of extracted meshes.
@@ -129,28 +152,37 @@ def ensure_npz_dataset(dl_manager) -> pathlib.Path:
     force_download = getattr(download_config, "force_download", False)
     extract_dir = _npz_extract_dir(download_config)
     npz_dir = extract_dir / "npz"
+    marker = extract_dir / ".complete"
+    lock_path = extract_dir.parent / f"{extract_dir.name}.lock"
 
-    if force_download and extract_dir.exists():
-        shutil.rmtree(extract_dir)
+    def _is_ready() -> bool:
+        return marker.is_file() and npz_dir.is_dir()
 
-    # Re-extract only when the meshes are actually missing; a deleted archive
-    # alone must not force a multi-GB re-download.
-    if not (npz_dir.is_dir() and any(npz_dir.iterdir())):
-        archive = dl_manager.download(
-            f"{DatasetConfig.REPO_URL}/{DatasetConfig.NPZ_ARCHIVE_NAME}"
-        )
-        extract_dir.mkdir(parents=True, exist_ok=True)
-        with tarfile.open(archive, "r:gz") as tf:
+    # Fast path: already extracted and not forced -- avoid taking the lock.
+    if _is_ready() and not force_download:
+        return extract_dir
+
+    extract_dir.parent.mkdir(parents=True, exist_ok=True)
+    with FileLock(str(lock_path)):
+        # Re-check under the lock: another process may have just finished.
+        if not (_is_ready() and not force_download):
+            # Clear any stale/partial/forced extraction before re-extracting.
+            if extract_dir.exists():
+                shutil.rmtree(extract_dir)
+            archive = dl_manager.download(
+                f"{DatasetConfig.REPO_URL}/{DatasetConfig.NPZ_ARCHIVE_NAME}"
+            )
+            extract_dir.mkdir(parents=True, exist_ok=True)
+            _extract_npz_archive(archive, extract_dir)
+            # Reclaim the archive space -- the extracted meshes are what we keep.
             try:
-                tf.extractall(extract_dir, filter="data")
-            except TypeError:
-                # Python < 3.12 has no extraction filter; the archive is ours.
-                tf.extractall(extract_dir)
-        # Reclaim the archive space -- the extracted meshes are what we keep.
-        try:
-            os.remove(archive)
-        except OSError:
-            logger.warning(f"Could not remove npz archive after extraction: {archive}")
+                os.remove(archive)
+            except OSError:
+                logger.warning(
+                    f"Could not remove npz archive after extraction: {archive}"
+                )
+            # Mark complete only after a fully successful extraction.
+            marker.touch()
 
     if not npz_dir.is_dir():
         raise FileNotFoundError(f"npz directory not found after extraction: {npz_dir}")
