@@ -8,6 +8,7 @@ import polars as pl
 import shutil
 import tarfile
 from filelock import FileLock
+from huggingface_hub import get_hf_file_metadata
 from typing import Any, Dict, List, Iterator, Tuple
 from ._logging import logger
 
@@ -135,6 +136,19 @@ def _extract_npz_archive(archive: str, extract_dir: pathlib.Path) -> None:
             tf.extractall(extract_dir)
 
 
+def _remote_archive_hash(url: str) -> str | None:
+    """Best-effort content hash of the remote archive via a single HEAD request.
+
+    Returns ``None`` when it cannot be determined (offline, ``HF_HUB_OFFLINE``,
+    network error, rate limited) so callers can fall back to trusting an
+    existing extraction rather than failing.
+    """
+    try:
+        return get_hf_file_metadata(url).etag
+    except Exception:
+        return None
+
+
 def ensure_npz_dataset(dl_manager) -> pathlib.Path:
     """Ensure the npz meshes are extracted locally and return their directory.
 
@@ -144,12 +158,14 @@ def ensure_npz_dataset(dl_manager) -> pathlib.Path:
     remain on disk. This keeps steady-state disk usage at 1x instead of keeping
     both the archive and its unpacked copy.
 
-    Idempotent and safe to call on every ``init()``: completion is tracked by a
-    ``.complete`` marker written only after a successful extraction, so an
-    interrupted extract is retried rather than mistaken for a finished one, and
-    a deleted archive on its own never triggers a re-download. A file lock
-    serializes concurrent callers (e.g. multi-worker data loaders) so only one
-    process performs the (re)extraction.
+    Idempotent and safe to call on every ``init()``: the ``.complete`` marker
+    records the content hash of the archive it was extracted from. On each call
+    a cheap HEAD fetches the current remote hash; extraction is (re)done only
+    when the marker is missing/partial or the hash differs, so an unchanged
+    archive is never re-downloaded (even across dataset revisions) while a
+    genuine content change triggers a refresh. If the hash cannot be fetched
+    (offline), an existing extraction is trusted. A file lock serializes
+    concurrent callers (e.g. multi-worker data loaders).
 
     :param dl_manager: A datasets download manager (used to fetch the archive).
     :returns: Directory containing the ``npz`` folder of extracted meshes.
@@ -160,11 +176,23 @@ def ensure_npz_dataset(dl_manager) -> pathlib.Path:
     npz_dir = extract_dir / "npz"
     marker = extract_dir / ".complete"
     lock_path = extract_dir.parent / f"{extract_dir.name}.lock"
+    url = f"{DatasetConfig.REPO_URL}/{DatasetConfig.NPZ_ARCHIVE_NAME}"
+
+    # Content hash of the remote archive (best-effort; None when unreachable).
+    remote_hash = _remote_archive_hash(url)
 
     def _is_ready() -> bool:
-        return marker.is_file() and npz_dir.is_dir()
+        if not (marker.is_file() and npz_dir.is_dir()):
+            return False
+        if remote_hash is None:
+            # Offline/unknown: trust the existing extraction rather than fail.
+            return True
+        try:
+            return marker.read_text().strip() == remote_hash
+        except OSError:
+            return False
 
-    # Fast path: already extracted and not forced -- avoid taking the lock.
+    # Fast path: extraction present and up to date -- avoid taking the lock.
     if _is_ready() and not force_download:
         return extract_dir
 
@@ -172,12 +200,10 @@ def ensure_npz_dataset(dl_manager) -> pathlib.Path:
     with FileLock(str(lock_path)):
         # Re-check under the lock: another process may have just finished.
         if not (_is_ready() and not force_download):
-            # Clear any stale/partial/forced extraction before re-extracting.
+            # Clear any stale/partial/outdated extraction before re-extracting.
             if extract_dir.exists():
                 shutil.rmtree(extract_dir)
-            archive = dl_manager.download(
-                f"{DatasetConfig.REPO_URL}/{DatasetConfig.NPZ_ARCHIVE_NAME}"
-            )
+            archive = dl_manager.download(url)
             extract_dir.mkdir(parents=True, exist_ok=True)
             _extract_npz_archive(archive, extract_dir)
             # Reclaim the archive space -- the extracted meshes are what we keep.
@@ -187,8 +213,10 @@ def ensure_npz_dataset(dl_manager) -> pathlib.Path:
                 logger.warning(
                     f"Could not remove npz archive after extraction: {archive}"
                 )
-            # Mark complete only after a fully successful extraction.
-            marker.touch()
+            # Stamp the archive's content hash so a future change triggers a
+            # refresh while an unchanged archive never re-downloads. Re-probe if
+            # the earlier HEAD failed but the download itself succeeded.
+            marker.write_text((remote_hash or _remote_archive_hash(url)) or "")
 
     if not npz_dir.is_dir():
         raise FileNotFoundError(f"npz directory not found after extraction: {npz_dir}")

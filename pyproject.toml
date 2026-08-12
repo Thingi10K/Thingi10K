@@ -12,6 +12,7 @@ dynamic = ["description", "version"]
 dependencies=[
     "datasets>=4.0",
     "filelock>=3.0",
+    "huggingface_hub>=0.24",
     "numpy>=1.22",
     "polars>=1.0",
     "lagrange-open>=6.29.0",
