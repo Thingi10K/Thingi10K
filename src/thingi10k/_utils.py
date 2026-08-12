@@ -6,7 +6,7 @@ import re
 import lagrange
 import logging
 from typing import Literal, Union, Any, Sequence
-from ._builder import Thingi10KBuilder, ensure_npz_dataset
+from ._builder import Thingi10KBuilder, ensure_archive
 from ._clip import with_clip, ClipFeatures
 from ._logging import logger
 
@@ -354,12 +354,11 @@ def init(
             download_config.cache_dir = cache_dir
         download_config.force_download = force_redownload
 
-        # For the npz variant, make sure the extracted meshes exist on every
-        # init(), not only when the datasets Arrow cache is (re)built. This
-        # repairs a cleared extraction without needing an Arrow-cache miss.
-        if (variant or "npz") == "npz":
-            dl_manager = datasets.DownloadManager(download_config=download_config)
-            ensure_npz_dataset(dl_manager)
+        # Make sure the extracted files exist on every init(), not only when the
+        # datasets Arrow cache is (re)built. This repairs a cleared extraction
+        # without needing an Arrow-cache miss.
+        dl_manager = datasets.DownloadManager(download_config=download_config)
+        ensure_archive(dl_manager, variant or Thingi10KBuilder.DEFAULT_CONFIG_NAME)
 
         builder = Thingi10KBuilder(config_name=variant)
         builder.download_and_prepare(download_config=download_config)
