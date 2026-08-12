@@ -35,7 +35,13 @@ _LICENSE = ""  # See license field associated with each model.
 class DatasetConfig:
     """Configuration constants for the Thingi10K dataset."""
 
-    REPO_URL = "https://huggingface.co/datasets/Thingi10K/Thingi10K/resolve/main"
+    # Pin to an immutable Hub tag so downloads are reproducible and a moving
+    # `main` never silently changes the data. Bump this when publishing an
+    # updated dataset revision.
+    REVISION = "v1.5.0"
+    REPO_URL = (
+        f"https://huggingface.co/datasets/Thingi10K/Thingi10K/resolve/{REVISION}"
+    )
     CORRUPT_FILE_IDS = frozenset([49911, 74463, 286163, 77942])
 
     # Schema definitions
