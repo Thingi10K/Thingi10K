@@ -233,6 +233,38 @@ def ensure_archive(dl_manager, variant: str) -> pathlib.Path:
     return extract_dir
 
 
+def clear_extracted(download_config, variant: str) -> bool:
+    """Delete a variant's extracted files (and its lock) from the cache.
+
+    Removes the ``thingi10k_<variant>_extracted`` directory that
+    :func:`ensure_archive` unpacks the archive into, along with the sibling
+    ``.lock`` file used to serialize concurrent extractions. A subsequent
+    :func:`ensure_archive` call re-downloads and re-extracts as needed.
+
+    :param download_config: A datasets download config (its ``cache_dir``
+                            selects which cache location is cleared).
+    :param variant:         One of ``"npz"``, ``"raw"``, ``"tetwild"``.
+    :returns: ``True`` if an extracted directory was removed, ``False`` if none
+        existed.
+    """
+    extract_dir = _variant_extract_dir(download_config, variant)
+    lock_path = extract_dir.parent / f"{extract_dir.name}.lock"
+
+    removed = False
+    # Serialize with any concurrent extraction before deleting the directory.
+    extract_dir.parent.mkdir(parents=True, exist_ok=True)
+    with FileLock(str(lock_path)):
+        if extract_dir.exists():
+            shutil.rmtree(extract_dir)
+            removed = True
+    # The lock file lingers after release; remove it too (best effort).
+    try:
+        lock_path.unlink()
+    except OSError:
+        pass
+    return removed
+
+
 class Thingi10KBuilder(datasets.GeneratorBasedBuilder):
     """
     Thingi10K Dataset builder.

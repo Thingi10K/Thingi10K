@@ -6,7 +6,7 @@ import re
 import lagrange
 import logging
 from typing import Literal, Union, Any, Sequence
-from ._builder import Thingi10KBuilder, ensure_archive
+from ._builder import Thingi10KBuilder, ensure_archive, clear_extracted
 from ._clip import with_clip, ClipFeatures
 from ._logging import logger
 
@@ -373,3 +373,42 @@ def init(
 
     except Exception as e:
         raise RuntimeError(f"Failed to initialize dataset: {e}") from e
+
+
+def clear_cache(
+    variant: Literal["npz", "raw", "tetwild"] | None = None,
+    cache_dir: str | None = None,
+) -> None:
+    """Delete the extracted dataset files from the local cache.
+
+    Removes the ``thingi10k_<variant>_extracted`` folder(s) that :func:`init`
+    unpacks the Hugging Face archive into, together with their lock files. The
+    downloaded archive itself is already deleted after extraction, so this
+    reclaims the remaining on-disk footprint. The next :func:`init` call
+    re-downloads and re-extracts as needed.
+
+    Note that this does not touch the Hugging Face metadata/Arrow caches; use
+    ``hf cache delete`` for those.
+
+    :param variant:   Which variant's cache to clear ("npz", "raw", or
+                      "tetwild"). If None (default), all variants are cleared.
+    :param cache_dir: The cache directory that was passed to :func:`init`. Pass
+                      the same value here so the matching location is cleared.
+
+    :raises ValueError: If variant is not supported.
+    """
+    if variant is not None and variant not in ["npz", "raw", "tetwild"]:
+        raise ValueError(
+            f"Unsupported variant: {variant}. Must be 'npz', 'raw', or 'tetwild'."
+        )
+
+    download_config = datasets.DownloadConfig()
+    if cache_dir is not None:
+        download_config.cache_dir = cache_dir
+
+    variants = [variant] if variant is not None else ["npz", "raw", "tetwild"]
+    for v in variants:
+        if clear_extracted(download_config, v):
+            logger.info(f"Cleared extracted cache for variant '{v}'")
+        else:
+            logger.info(f"No extracted cache found for variant '{v}'")

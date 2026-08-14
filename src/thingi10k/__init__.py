@@ -118,6 +118,12 @@ Dataset is cached locally by default:
     >>> # Force re-download
     >>> thingi10k.init(force_redownload=True)
 
+Reclaim disk by deleting the extracted files (re-downloaded on the next init):
+
+    >>> thingi10k.clear_cache()                 # all variants
+    >>> thingi10k.clear_cache(variant='raw')    # a single variant
+    >>> thingi10k.clear_cache(cache_dir='path/to/cache')  # a custom cache_dir
+
 ## CLIP-based Semantic Search
 
 For semantic search using natural language queries (requires optional dependencies):
@@ -141,10 +147,12 @@ from ._utils import (
     load_file,
     init,
     dataset,
+    clear_cache,
 )
 from ._logging import logger
 
 __all__ = [
+    "clear_cache",
     "dataset",
     "init",
     "load_file",
