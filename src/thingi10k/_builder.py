@@ -146,6 +146,12 @@ def _extract_archive(archive: str, extract_dir: pathlib.Path) -> None:
             tf.extractall(extract_dir)
 
 
+# Stamped in the ``.complete`` marker when the remote hash could not be probed
+# at extraction time. A later successful HEAD must not treat this as a hash
+# mismatch, or a perfectly good local extraction would be re-downloaded.
+_HASH_UNKNOWN = "unknown"
+
+
 def _remote_archive_hash(url: str) -> str | None:
     """Best-effort content hash of the remote archive via a single HEAD request.
 
@@ -199,9 +205,14 @@ def ensure_archive(dl_manager, variant: str) -> pathlib.Path:
             # Offline/unknown: trust the existing extraction rather than fail.
             return True
         try:
-            return marker.read_text().strip() == remote_hash
+            stamped = marker.read_text().strip()
         except OSError:
             return False
+        # Extraction stamped before its hash was known (transient HEAD failure):
+        # trust it rather than forcing a re-download once HEAD recovers.
+        if stamped == _HASH_UNKNOWN:
+            return True
+        return stamped == remote_hash
 
     # Fast path: extraction present and up to date -- avoid taking the lock.
     if _is_ready():
@@ -226,8 +237,12 @@ def ensure_archive(dl_manager, variant: str) -> pathlib.Path:
                 )
             # Stamp the archive's content hash so a future change triggers a
             # refresh while an unchanged archive never re-downloads. Re-probe if
-            # the earlier HEAD failed but the download itself succeeded.
-            marker.write_text((remote_hash or _remote_archive_hash(url)) or "")
+            # the earlier HEAD failed but the download itself succeeded; if still
+            # unknown, stamp the sentinel so a later HEAD doesn't force a
+            # needless re-download of a valid extraction.
+            marker.write_text(
+                remote_hash or _remote_archive_hash(url) or _HASH_UNKNOWN
+            )
 
     verify_dir = extract_dir / verify_subdir
     if not verify_dir.is_dir():
@@ -262,11 +277,9 @@ def clear_extracted(download_config, variant: str) -> bool:
         if extract_dir.exists():
             shutil.rmtree(extract_dir)
             removed = True
-    # The lock file lingers after release; remove it too (best effort).
-    try:
-        lock_path.unlink()
-    except OSError:
-        pass
+    # Leave the (empty) lock file in place: deleting it after releasing the lock
+    # would let a concurrent ensure_archive create a fresh lock file on a new
+    # inode, so two processes could believe they hold the extraction lock.
     return removed
 
 
@@ -449,15 +462,21 @@ class Thingi10KBuilder(datasets.GeneratorBasedBuilder):
         if self.config.name == "raw":
             # Raw meshes keep their original extension, derived per file from
             # the summary's Link column.
-            raw_data = summary_data.select(["ID", "Link"])
-            return [
-                extraction_dir
-                / "Thingi10K"
-                / "raw_meshes"
-                / f"{row[0]}.{row[1].split('.')[-1].lower()}"
-                for row in raw_data.iter_rows()
-                if row[0] not in DatasetConfig.CORRUPT_FILE_IDS
-            ]
+            raw_dir = extraction_dir / "Thingi10K" / "raw_meshes"
+            downloaded_files = []
+            for file_id, link in summary_data.select(["ID", "Link"]).iter_rows():
+                if file_id in DatasetConfig.CORRUPT_FILE_IDS:
+                    continue
+                if link is None:
+                    # No Link means no extension to resolve; skip rather than
+                    # crash the whole raw-variant init on one bad row.
+                    logger.warning(
+                        f"Skipping raw file {file_id}: missing 'Link' column value."
+                    )
+                    continue
+                ext = link.split(".")[-1].lower()
+                downloaded_files.append(raw_dir / f"{file_id}.{ext}")
+            return downloaded_files
 
         # npz and tetwild: one "<file_id>.npz" per file under a fixed subdir.
         npz_subdir = {"npz": "npz", "tetwild": "tetwild/10k_surface_npz"}.get(

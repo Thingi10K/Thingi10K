@@ -366,8 +366,25 @@ def init(
         dl_manager = datasets.DownloadManager(download_config=download_config)
         ensure_archive(dl_manager, variant or Thingi10KBuilder.DEFAULT_CONFIG_NAME)
 
+        # The forced refresh (if any) happened just above. The builder re-checks
+        # the same extraction below; leaving force_download set would make it
+        # rmtree and re-download the multi-GB archive a second time on a cold
+        # Arrow cache.
+        download_config.force_download = False
+
+        # force_redownload must also rebuild the Arrow cache, otherwise a warm
+        # cache is reused and CSV-derived metadata is never refreshed. The
+        # explicit download_config above keeps force_download=False, so this
+        # regenerates without re-downloading the archive (the builder's own
+        # ensure_archive call takes the fast path).
+        download_mode = (
+            datasets.DownloadMode.FORCE_REDOWNLOAD if force_redownload else None
+        )
+
         builder = Thingi10KBuilder(config_name=variant)
-        builder.download_and_prepare(download_config=download_config)
+        builder.download_and_prepare(
+            download_config=download_config, download_mode=download_mode
+        )
         _dataset = builder.as_dataset()
 
         logger.info(
