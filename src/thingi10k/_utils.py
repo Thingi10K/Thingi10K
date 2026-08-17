@@ -6,7 +6,12 @@ import re
 import lagrange
 import logging
 from typing import Literal, Union, Any, Sequence
-from ._builder import Thingi10KBuilder, ensure_archive, clear_extracted
+from ._builder import (
+    Thingi10KBuilder,
+    DatasetConfig,
+    ensure_archive,
+    clear_extracted,
+)
 from ._clip import with_clip, ClipFeatures
 from ._logging import logger
 
@@ -345,8 +350,9 @@ def init(
     """
     global _dataset, _clip_features
 
-    if variant is not None and variant not in ["npz", "raw", "tetwild"]:
-        raise ValueError(f"Unsupported variant: {variant}. Must be 'npz', 'raw', or 'tetwild'.")
+    if variant is not None and variant not in DatasetConfig.ARCHIVES:
+        supported = ", ".join(repr(v) for v in DatasetConfig.ARCHIVES)
+        raise ValueError(f"Unsupported variant: {variant}. Must be one of {supported}.")
 
     try:
         download_config = datasets.DownloadConfig()
@@ -397,16 +403,15 @@ def clear_cache(
 
     :raises ValueError: If variant is not supported.
     """
-    if variant is not None and variant not in ["npz", "raw", "tetwild"]:
-        raise ValueError(
-            f"Unsupported variant: {variant}. Must be 'npz', 'raw', or 'tetwild'."
-        )
+    if variant is not None and variant not in DatasetConfig.ARCHIVES:
+        supported = ", ".join(repr(v) for v in DatasetConfig.ARCHIVES)
+        raise ValueError(f"Unsupported variant: {variant}. Must be one of {supported}.")
 
     download_config = datasets.DownloadConfig()
     if cache_dir is not None:
         download_config.cache_dir = cache_dir
 
-    variants = [variant] if variant is not None else ["npz", "raw", "tetwild"]
+    variants = [variant] if variant is not None else list(DatasetConfig.ARCHIVES)
     for v in variants:
         if clear_extracted(download_config, v):
             logger.info(f"Cleared extracted cache for variant '{v}'")

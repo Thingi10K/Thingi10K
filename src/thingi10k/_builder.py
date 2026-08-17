@@ -121,6 +121,11 @@ def _variant_extract_dir(download_config, variant: str) -> pathlib.Path:
     return base / f"thingi10k_{variant}_extracted"
 
 
+def _variant_lock_path(extract_dir: pathlib.Path) -> pathlib.Path:
+    """Lock file serializing extraction/clearing of ``extract_dir``."""
+    return extract_dir.parent / f"{extract_dir.name}.lock"
+
+
 def _extract_archive(archive: str, extract_dir: pathlib.Path) -> None:
     """Extract a dataset tar.gz into ``extract_dir``, safely on any Python."""
     with tarfile.open(archive, "r:gz") as tf:
@@ -181,14 +186,14 @@ def ensure_archive(dl_manager, variant: str) -> pathlib.Path:
     force_download = getattr(download_config, "force_download", False)
     extract_dir = _variant_extract_dir(download_config, variant)
     marker = extract_dir / ".complete"
-    lock_path = extract_dir.parent / f"{extract_dir.name}.lock"
+    lock_path = _variant_lock_path(extract_dir)
     url = f"{DatasetConfig.REPO_URL}/{archive_name}"
 
     # Content hash of the remote archive (best-effort; None when unreachable).
     remote_hash = _remote_archive_hash(url)
 
     def _is_ready() -> bool:
-        if not marker.is_file():
+        if force_download or not marker.is_file():
             return False
         if remote_hash is None:
             # Offline/unknown: trust the existing extraction rather than fail.
@@ -199,13 +204,13 @@ def ensure_archive(dl_manager, variant: str) -> pathlib.Path:
             return False
 
     # Fast path: extraction present and up to date -- avoid taking the lock.
-    if _is_ready() and not force_download:
+    if _is_ready():
         return extract_dir
 
     extract_dir.parent.mkdir(parents=True, exist_ok=True)
     with FileLock(str(lock_path)):
         # Re-check under the lock: another process may have just finished.
-        if not (_is_ready() and not force_download):
+        if not _is_ready():
             # Clear any stale/partial/outdated extraction before re-extracting.
             if extract_dir.exists():
                 shutil.rmtree(extract_dir)
@@ -248,7 +253,7 @@ def clear_extracted(download_config, variant: str) -> bool:
         existed.
     """
     extract_dir = _variant_extract_dir(download_config, variant)
-    lock_path = extract_dir.parent / f"{extract_dir.name}.lock"
+    lock_path = _variant_lock_path(extract_dir)
 
     removed = False
     # Serialize with any concurrent extraction before deleting the directory.
@@ -441,15 +446,11 @@ class Thingi10KBuilder(datasets.GeneratorBasedBuilder):
         # resolved relative to the returned extraction directory per variant.
         extraction_dir = ensure_archive(dl_manager, self.config.name)
 
-        if self.config.name == "npz":
-            downloaded_files = [
-                extraction_dir / "npz" / f"{file_id}.npz"
-                for file_id in file_ids
-                if file_id not in DatasetConfig.CORRUPT_FILE_IDS
-            ]
-        elif self.config.name == "raw":
+        if self.config.name == "raw":
+            # Raw meshes keep their original extension, derived per file from
+            # the summary's Link column.
             raw_data = summary_data.select(["ID", "Link"])
-            downloaded_files = [
+            return [
                 extraction_dir
                 / "Thingi10K"
                 / "raw_meshes"
@@ -457,16 +458,18 @@ class Thingi10KBuilder(datasets.GeneratorBasedBuilder):
                 for row in raw_data.iter_rows()
                 if row[0] not in DatasetConfig.CORRUPT_FILE_IDS
             ]
-        elif self.config.name == "tetwild":
-            downloaded_files = [
-                extraction_dir / "tetwild" / "10k_surface_npz" / f"{file_id}.npz"
-                for file_id in file_ids
-                if file_id not in DatasetConfig.CORRUPT_FILE_IDS
-            ]
-        else:
-            raise ValueError(f"Unknown config name: {self.config.name}")
 
-        return downloaded_files
+        # npz and tetwild: one "<file_id>.npz" per file under a fixed subdir.
+        npz_subdir = {"npz": "npz", "tetwild": "tetwild/10k_surface_npz"}.get(
+            self.config.name
+        )
+        if npz_subdir is None:
+            raise ValueError(f"Unknown config name: {self.config.name}")
+        return [
+            extraction_dir / npz_subdir / f"{file_id}.npz"
+            for file_id in file_ids
+            if file_id not in DatasetConfig.CORRUPT_FILE_IDS
+        ]
 
     def _prepare_dataframe(
         self,
