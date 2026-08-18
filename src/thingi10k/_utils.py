@@ -6,7 +6,12 @@ import re
 import lagrange
 import logging
 from typing import Literal, Union, Any, Sequence
-from ._builder import Thingi10KBuilder
+from ._builder import (
+    Thingi10KBuilder,
+    DatasetConfig,
+    ensure_archive,
+    clear_extracted,
+)
 from ._clip import with_clip, ClipFeatures
 from ._logging import logger
 
@@ -345,8 +350,9 @@ def init(
     """
     global _dataset, _clip_features
 
-    if variant is not None and variant not in ["npz", "raw", "tetwild"]:
-        raise ValueError(f"Unsupported variant: {variant}. Must be 'npz', 'raw', or 'tetwild'.")
+    if variant is not None and variant not in DatasetConfig.ARCHIVES:
+        supported = ", ".join(repr(v) for v in DatasetConfig.ARCHIVES)
+        raise ValueError(f"Unsupported variant: {variant}. Must be one of {supported}.")
 
     try:
         download_config = datasets.DownloadConfig()
@@ -354,8 +360,31 @@ def init(
             download_config.cache_dir = cache_dir
         download_config.force_download = force_redownload
 
+        # Make sure the extracted files exist on every init(), not only when the
+        # datasets Arrow cache is (re)built. This repairs a cleared extraction
+        # without needing an Arrow-cache miss.
+        dl_manager = datasets.DownloadManager(download_config=download_config)
+        ensure_archive(dl_manager, variant or Thingi10KBuilder.DEFAULT_CONFIG_NAME)
+
+        # The forced refresh (if any) happened just above. The builder re-checks
+        # the same extraction below; leaving force_download set would make it
+        # rmtree and re-download the multi-GB archive a second time on a cold
+        # Arrow cache.
+        download_config.force_download = False
+
+        # force_redownload must also rebuild the Arrow cache, otherwise a warm
+        # cache is reused and CSV-derived metadata is never refreshed. The
+        # explicit download_config above keeps force_download=False, so this
+        # regenerates without re-downloading the archive (the builder's own
+        # ensure_archive call takes the fast path).
+        download_mode = (
+            datasets.DownloadMode.FORCE_REDOWNLOAD if force_redownload else None
+        )
+
         builder = Thingi10KBuilder(config_name=variant)
-        builder.download_and_prepare(download_config=download_config)
+        builder.download_and_prepare(
+            download_config=download_config, download_mode=download_mode
+        )
         _dataset = builder.as_dataset()
 
         logger.info(
@@ -367,3 +396,42 @@ def init(
 
     except Exception as e:
         raise RuntimeError(f"Failed to initialize dataset: {e}") from e
+
+
+def clear_cache(
+    variant: Literal["npz", "raw", "tetwild"] | None = None,
+    cache_dir: str | None = None,
+) -> None:
+    """Delete the extracted dataset files from the local cache.
+
+    Removes the ``thingi10k_<variant>_extracted`` folder(s) that :func:`init`
+    unpacks the Hugging Face archive into. Their ``.lock`` files are
+    intentionally left in place to avoid a race with concurrent extractions.
+    The downloaded archive itself is already deleted after extraction, so
+    this reclaims most of the remaining on-disk footprint. The next
+    :func:`init` call re-downloads and re-extracts as needed.
+
+    Note that this does not touch the Hugging Face metadata/Arrow caches; use
+    ``hf cache delete`` for those.
+
+    :param variant:   Which variant's cache to clear ("npz", "raw", or
+                      "tetwild"). If None (default), all variants are cleared.
+    :param cache_dir: The cache directory that was passed to :func:`init`. Pass
+                      the same value here so the matching location is cleared.
+
+    :raises ValueError: If variant is not supported.
+    """
+    if variant is not None and variant not in DatasetConfig.ARCHIVES:
+        supported = ", ".join(repr(v) for v in DatasetConfig.ARCHIVES)
+        raise ValueError(f"Unsupported variant: {variant}. Must be one of {supported}.")
+
+    download_config = datasets.DownloadConfig()
+    if cache_dir is not None:
+        download_config.cache_dir = cache_dir
+
+    variants = [variant] if variant is not None else list(DatasetConfig.ARCHIVES)
+    for v in variants:
+        if clear_extracted(download_config, v):
+            logger.info(f"Cleared extracted cache for variant '{v}'")
+        else:
+            logger.info(f"No extracted cache found for variant '{v}'")

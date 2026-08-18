@@ -2,8 +2,13 @@
 
 import datasets  # type: ignore
 import datetime
+import os
 import pathlib
 import polars as pl
+import shutil
+import tarfile
+from filelock import FileLock
+from huggingface_hub import get_hf_file_metadata
 from typing import Any, Dict, List, Iterator, Tuple
 from ._logging import logger
 
@@ -31,7 +36,13 @@ _LICENSE = ""  # See license field associated with each model.
 class DatasetConfig:
     """Configuration constants for the Thingi10K dataset."""
 
-    REPO_URL = "https://huggingface.co/datasets/Thingi10K/Thingi10K/resolve/main"
+    # Pin to an immutable Hub tag so downloads are reproducible and a moving
+    # `main` never silently changes the data. Bump this when publishing an
+    # updated dataset revision.
+    REVISION = "v1.5.0"
+    REPO_URL = (
+        f"https://huggingface.co/datasets/Thingi10K/Thingi10K/resolve/{REVISION}"
+    )
     CORRUPT_FILE_IDS = frozenset([49911, 74463, 286163, 77942])
 
     # Schema definitions
@@ -90,6 +101,190 @@ class DatasetConfig:
     # Default date for missing values
     DEFAULT_DATE = datetime.datetime(1900, 1, 1)
 
+    # Per-variant single-file archive and the top-level directory expected
+    # inside it (used as a sanity check after extraction).
+    ARCHIVES = {
+        "npz": ("Thingi10K_npz.tar.gz", "npz"),
+        "raw": ("Thingi10K.tar.gz", "Thingi10K"),
+        "tetwild": ("Thingi10K_tetwild_npz.tar.gz", "tetwild"),
+    }
+
+
+def _variant_extract_dir(download_config, variant: str) -> pathlib.Path:
+    """Stable directory a variant's archive is extracted into."""
+    cache_dir = getattr(download_config, "cache_dir", None)
+    base = (
+        pathlib.Path(cache_dir)
+        if cache_dir
+        else pathlib.Path(datasets.config.HF_DATASETS_CACHE)
+    )
+    return base / f"thingi10k_{variant}_extracted"
+
+
+def _variant_lock_path(extract_dir: pathlib.Path) -> pathlib.Path:
+    """Lock file serializing extraction/clearing of ``extract_dir``."""
+    return extract_dir.parent / f"{extract_dir.name}.lock"
+
+
+def _extract_archive(archive: str, extract_dir: pathlib.Path) -> None:
+    """Extract a dataset tar.gz into ``extract_dir``, safely on any Python."""
+    with tarfile.open(archive, "r:gz") as tf:
+        try:
+            # Python 3.12+ (and 3.10.12+/3.11.4+ backports): the 'data' filter
+            # blocks path traversal, absolute paths, and links.
+            tf.extractall(extract_dir, filter="data")
+        except TypeError:
+            # Older Pythons lack the extraction filter; validate members
+            # ourselves before trusting the archive.
+            dest = extract_dir.resolve()
+            for member in tf.getmembers():
+                target = (dest / member.name).resolve()
+                if target != dest and dest not in target.parents:
+                    raise ValueError(f"Unsafe path in archive: {member.name!r}")
+                if member.issym() or member.islnk():
+                    raise ValueError(f"Unsafe link in archive: {member.name!r}")
+            tf.extractall(extract_dir)
+
+
+# Stamped in the ``.complete`` marker when the remote hash could not be probed
+# at extraction time. A later successful HEAD must not treat this as a hash
+# mismatch, or a perfectly good local extraction would be re-downloaded.
+_HASH_UNKNOWN = "unknown"
+
+
+def _remote_archive_hash(url: str) -> str | None:
+    """Best-effort content hash of the remote archive via a single HEAD request.
+
+    Returns ``None`` when it cannot be determined (offline, ``HF_HUB_OFFLINE``,
+    network error, rate limited) so callers can fall back to trusting an
+    existing extraction rather than failing.
+    """
+    try:
+        return get_hf_file_metadata(url).etag
+    except Exception:
+        return None
+
+
+def ensure_archive(dl_manager, variant: str) -> pathlib.Path:
+    """Ensure a variant's archive is extracted locally and return its directory.
+
+    Downloads the single ``.tar.gz`` for ``variant`` (one request, so it avoids
+    the per-file rate limits of fetching thousands of individual files),
+    extracts it, and deletes the archive so only the extracted files remain on
+    disk. This keeps steady-state disk usage at 1x instead of keeping both the
+    archive and its unpacked copy.
+
+    Idempotent and safe to call on every ``init()``: the ``.complete`` marker
+    records the content hash of the archive it was extracted from. On each call
+    a cheap HEAD fetches the current remote hash; extraction is (re)done only
+    when the marker is missing/partial or the hash differs, so an unchanged
+    archive is never re-downloaded (even across dataset revisions) while a
+    genuine content change triggers a refresh. If the hash cannot be fetched
+    (offline), an existing extraction is trusted. A file lock serializes
+    concurrent callers (e.g. multi-worker data loaders).
+
+    :param dl_manager: A datasets download manager (used to fetch the archive).
+    :param variant:    One of ``"npz"``, ``"raw"``, ``"tetwild"``.
+    :returns: Directory the archive was extracted into.
+    """
+    archive_name, verify_subdir = DatasetConfig.ARCHIVES[variant]
+    download_config = getattr(dl_manager, "download_config", None)
+    force_download = getattr(download_config, "force_download", False)
+    extract_dir = _variant_extract_dir(download_config, variant)
+    verify_dir = extract_dir / verify_subdir
+    marker = extract_dir / ".complete"
+    lock_path = _variant_lock_path(extract_dir)
+    url = f"{DatasetConfig.REPO_URL}/{archive_name}"
+
+    # Content hash of the remote archive (best-effort; None when unreachable).
+    remote_hash = _remote_archive_hash(url)
+
+    def _is_ready() -> bool:
+        if force_download or not marker.is_file() or not verify_dir.is_dir():
+            return False
+        if remote_hash is None:
+            # Offline/unknown: trust the existing extraction rather than fail.
+            return True
+        try:
+            stamped = marker.read_text().strip()
+        except OSError:
+            return False
+        # Extraction stamped before its hash was known (transient HEAD failure):
+        # trust it rather than forcing a re-download once HEAD recovers.
+        if stamped == _HASH_UNKNOWN:
+            return True
+        return stamped == remote_hash
+
+    # Fast path: extraction present and up to date -- avoid taking the lock.
+    if _is_ready():
+        return extract_dir
+
+    extract_dir.parent.mkdir(parents=True, exist_ok=True)
+    with FileLock(str(lock_path)):
+        # Re-check under the lock: another process may have just finished.
+        if not _is_ready():
+            # Clear any stale/partial/outdated extraction before re-extracting.
+            if extract_dir.exists():
+                shutil.rmtree(extract_dir)
+            archive = dl_manager.download(url)
+            extract_dir.mkdir(parents=True, exist_ok=True)
+            _extract_archive(archive, extract_dir)
+            # Reclaim the archive space -- the extracted files are what we keep.
+            try:
+                os.remove(archive)
+            except OSError:
+                logger.warning(
+                    f"Could not remove archive after extraction: {archive}"
+                )
+            # Stamp the archive's content hash so a future change triggers a
+            # refresh while an unchanged archive never re-downloads. Re-probe if
+            # the earlier HEAD failed but the download itself succeeded; if still
+            # unknown, stamp the sentinel so a later HEAD doesn't force a
+            # needless re-download of a valid extraction.
+            marker.write_text(
+                remote_hash or _remote_archive_hash(url) or _HASH_UNKNOWN
+            )
+
+    if not verify_dir.is_dir():
+        raise FileNotFoundError(
+            f"Expected '{verify_subdir}' not found in extracted {variant} archive: "
+            f"{extract_dir}"
+        )
+    return extract_dir
+
+
+def clear_extracted(download_config, variant: str) -> bool:
+    """Delete a variant's extracted files from the cache.
+
+    Removes the ``thingi10k_<variant>_extracted`` directory that
+    :func:`ensure_archive` unpacks the archive into. The sibling ``.lock``
+    file is intentionally left in place -- removing it here could let a
+    concurrent :func:`ensure_archive` create a fresh lock file on a new
+    inode, so two processes could believe they hold the extraction lock. A
+    subsequent :func:`ensure_archive` call re-downloads and re-extracts as
+    needed.
+
+    :param download_config: A datasets download config (its ``cache_dir``
+                            selects which cache location is cleared).
+    :param variant:         One of ``"npz"``, ``"raw"``, ``"tetwild"``.
+    :returns: ``True`` if an extracted directory was removed, ``False`` if none
+        existed.
+    """
+    extract_dir = _variant_extract_dir(download_config, variant)
+    lock_path = _variant_lock_path(extract_dir)
+
+    removed = False
+    # Serialize with any concurrent extraction before deleting the directory.
+    extract_dir.parent.mkdir(parents=True, exist_ok=True)
+    with FileLock(str(lock_path)):
+        if extract_dir.exists():
+            shutil.rmtree(extract_dir)
+            removed = True
+    # Leave the (empty) lock file in place: deleting it after releasing the lock
+    # would let a concurrent ensure_archive create a fresh lock file on a new
+    # inode, so two processes could believe they hold the extraction lock.
+    return removed
+
 
 class Thingi10KBuilder(datasets.GeneratorBasedBuilder):
     """
@@ -99,17 +294,17 @@ class Thingi10KBuilder(datasets.GeneratorBasedBuilder):
     BUILDER_CONFIGS = [
         datasets.BuilderConfig(
             name="npz",
-            version="1.0.0",
+            version="1.2.0",
             description="Dataset stored in .npz format.",
         ),
         datasets.BuilderConfig(
             name="raw",
-            version="1.0.0",
+            version="1.1.0",
             description="Dataset stored in their original raw mesh format.",
         ),
         datasets.BuilderConfig(
             name="tetwild",
-            version="1.0.0",
+            version="1.1.0",
             description="Dataset remeshed using TetWild.",
         ),
     ]
@@ -256,61 +451,47 @@ class Thingi10KBuilder(datasets.GeneratorBasedBuilder):
     def _prepare_dataset_files(
         self, dl_manager, geometry_data: pl.DataFrame, summary_data: pl.DataFrame
     ) -> list[pathlib.Path]:
-        """Prepare the dataset files for download."""
-        repo_url = DatasetConfig.REPO_URL
+        """Prepare the dataset files for download.
 
+        Every variant downloads a single archive, extracts it, and deletes the
+        archive so only the unpacked files stay on disk (1x, not 2x).
+        """
         file_ids = geometry_data["file_id"]
 
-        if self.config.name == "npz":
-            extraction_dir = dl_manager.download_and_extract(
-                f"{repo_url}/Thingi10K_npz.tar.gz"
-            )
-            extraction_dir = pathlib.Path(extraction_dir)
-            if not extraction_dir.exists() or not extraction_dir.is_dir():
-                raise FileNotFoundError(
-                    f"Extraction directory not found: {extraction_dir}"
-                )
-            downloaded_files = [
-                extraction_dir / "npz" / f"{file_id}.npz"
-                for file_id in file_ids
-                if file_id not in DatasetConfig.CORRUPT_FILE_IDS
-            ]
-        elif self.config.name == "raw":
-            raw_data = summary_data.select(["ID", "Link"])
-            extraction_dir = dl_manager.download_and_extract(
-                f"{repo_url}/Thingi10K.tar.gz"
-            )
-            extraction_dir = pathlib.Path(extraction_dir)
-            if not extraction_dir.exists() or not extraction_dir.is_dir():
-                raise FileNotFoundError(
-                    f"Extraction directory not found: {extraction_dir}"
-                )
-            downloaded_files = [
-                extraction_dir
-                / "Thingi10K"
-                / "raw_meshes"
-                / f"{row[0]}.{row[1].split('.')[-1].lower()}"
-                for row in raw_data.iter_rows()
-                if row[0] not in DatasetConfig.CORRUPT_FILE_IDS
-            ]
-        elif self.config.name == "tetwild":
-            extraction_dir = dl_manager.download_and_extract(
-                f"{repo_url}/Thingi10K_tetwild_npz.tar.gz"
-            )
-            extraction_dir = pathlib.Path(extraction_dir)
-            if not extraction_dir.exists() or not extraction_dir.is_dir():
-                raise FileNotFoundError(
-                    f"Extraction directory not found: {extraction_dir}"
-                )
-            downloaded_files = [
-                extraction_dir / "tetwild" / "10k_surface_npz" / f"{file_id}.npz"
-                for file_id in file_ids
-                if file_id not in DatasetConfig.CORRUPT_FILE_IDS
-            ]
-        else:
-            raise ValueError(f"Unknown config name: {self.config.name}")
+        # Download + extract (archive deleted, hash-invalidated); paths are then
+        # resolved relative to the returned extraction directory per variant.
+        extraction_dir = ensure_archive(dl_manager, self.config.name)
 
-        return downloaded_files
+        if self.config.name == "raw":
+            # Raw meshes keep their original extension, derived per file from
+            # the summary's Link column.
+            raw_dir = extraction_dir / "Thingi10K" / "raw_meshes"
+            downloaded_files = []
+            for file_id, link in summary_data.select(["ID", "Link"]).iter_rows():
+                if file_id in DatasetConfig.CORRUPT_FILE_IDS:
+                    continue
+                if link is None:
+                    # No Link means no extension to resolve; skip rather than
+                    # crash the whole raw-variant init on one bad row.
+                    logger.warning(
+                        f"Skipping raw file {file_id}: missing 'Link' column value."
+                    )
+                    continue
+                ext = link.split(".")[-1].lower()
+                downloaded_files.append(raw_dir / f"{file_id}.{ext}")
+            return downloaded_files
+
+        # npz and tetwild: one "<file_id>.npz" per file under a fixed subdir.
+        npz_subdir = {"npz": "npz", "tetwild": "tetwild/10k_surface_npz"}.get(
+            self.config.name
+        )
+        if npz_subdir is None:
+            raise ValueError(f"Unknown config name: {self.config.name}")
+        return [
+            extraction_dir / npz_subdir / f"{file_id}.npz"
+            for file_id in file_ids
+            if file_id not in DatasetConfig.CORRUPT_FILE_IDS
+        ]
 
     def _prepare_dataframe(
         self,
