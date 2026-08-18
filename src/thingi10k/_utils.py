@@ -405,10 +405,11 @@ def clear_cache(
     """Delete the extracted dataset files from the local cache.
 
     Removes the ``thingi10k_<variant>_extracted`` folder(s) that :func:`init`
-    unpacks the Hugging Face archive into, together with their lock files. The
-    downloaded archive itself is already deleted after extraction, so this
-    reclaims the remaining on-disk footprint. The next :func:`init` call
-    re-downloads and re-extracts as needed.
+    unpacks the Hugging Face archive into. Their ``.lock`` files are
+    intentionally left in place to avoid a race with concurrent extractions.
+    The downloaded archive itself is already deleted after extraction, so
+    this reclaims most of the remaining on-disk footprint. The next
+    :func:`init` call re-downloads and re-extracts as needed.
 
     Note that this does not touch the Hugging Face metadata/Arrow caches; use
     ``hf cache delete`` for those.

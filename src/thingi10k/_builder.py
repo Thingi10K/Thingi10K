@@ -191,6 +191,7 @@ def ensure_archive(dl_manager, variant: str) -> pathlib.Path:
     download_config = getattr(dl_manager, "download_config", None)
     force_download = getattr(download_config, "force_download", False)
     extract_dir = _variant_extract_dir(download_config, variant)
+    verify_dir = extract_dir / verify_subdir
     marker = extract_dir / ".complete"
     lock_path = _variant_lock_path(extract_dir)
     url = f"{DatasetConfig.REPO_URL}/{archive_name}"
@@ -199,7 +200,7 @@ def ensure_archive(dl_manager, variant: str) -> pathlib.Path:
     remote_hash = _remote_archive_hash(url)
 
     def _is_ready() -> bool:
-        if force_download or not marker.is_file():
+        if force_download or not marker.is_file() or not verify_dir.is_dir():
             return False
         if remote_hash is None:
             # Offline/unknown: trust the existing extraction rather than fail.
@@ -244,7 +245,6 @@ def ensure_archive(dl_manager, variant: str) -> pathlib.Path:
                 remote_hash or _remote_archive_hash(url) or _HASH_UNKNOWN
             )
 
-    verify_dir = extract_dir / verify_subdir
     if not verify_dir.is_dir():
         raise FileNotFoundError(
             f"Expected '{verify_subdir}' not found in extracted {variant} archive: "
@@ -254,12 +254,15 @@ def ensure_archive(dl_manager, variant: str) -> pathlib.Path:
 
 
 def clear_extracted(download_config, variant: str) -> bool:
-    """Delete a variant's extracted files (and its lock) from the cache.
+    """Delete a variant's extracted files from the cache.
 
     Removes the ``thingi10k_<variant>_extracted`` directory that
-    :func:`ensure_archive` unpacks the archive into, along with the sibling
-    ``.lock`` file used to serialize concurrent extractions. A subsequent
-    :func:`ensure_archive` call re-downloads and re-extracts as needed.
+    :func:`ensure_archive` unpacks the archive into. The sibling ``.lock``
+    file is intentionally left in place -- removing it here could let a
+    concurrent :func:`ensure_archive` create a fresh lock file on a new
+    inode, so two processes could believe they hold the extraction lock. A
+    subsequent :func:`ensure_archive` call re-downloads and re-extracts as
+    needed.
 
     :param download_config: A datasets download config (its ``cache_dir``
                             selects which cache location is cleared).
